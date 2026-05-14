@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# env files (contain secrets — set these in Railway dashboard)
+.env
+.env.local
+.env.*.local
+
+# Large binary assets — serve from CDN or object storage instead
+*.fbx
+*.glb
+
+# build artifacts
+tsconfig.tsbuildinfo
+
+# OS
+.DS_Store
