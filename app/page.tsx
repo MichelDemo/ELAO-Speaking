@@ -368,9 +368,9 @@ export default function Home() {
     return () => clearInterval(id);
   }, [sessionStarted]);
 
-  // Auto-evaluate at 5 min
+  // Auto-evaluate at 4 min
   useEffect(() => {
-    if (elapsed === 300 && !cefrResult && !evaluating) runEvaluation();
+    if (elapsed === 240 && !cefrResult && !evaluating) runEvaluation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elapsed]);
 
