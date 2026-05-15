@@ -95,7 +95,7 @@ function GLBModel({ amplitude, url }: { amplitude: number; url: string }) {
   );
 }
 
-// ── FBX model (Rocketbox _facial.fbx → ARKit blendshapes; Mixamo → jaw bone) ──
+// ── FBX model ─────────────────────────────────────────────────────────────────
 function FBXModel({ amplitude, url }: { amplitude: number; url: string }) {
   const fbx = useFBX(url);
   const meshRef = useRef<THREE.SkinnedMesh | null>(null);
@@ -108,13 +108,11 @@ function FBXModel({ amplitude, url }: { amplitude: number; url: string }) {
     if (initRef.current) return;
     initRef.current = true;
 
-    // Auto-scale so the character is ~1.7 units tall
     const box = new THREE.Box3().setFromObject(fbx);
     const size = new THREE.Vector3();
     box.getSize(size);
     if (size.y > 0) fbx.scale.setScalar(1.7 / size.y);
 
-    // Prefer ARKit blendshapes (Rocketbox _facial.fbx)
     fbx.traverse((obj) => {
       if (
         !meshRef.current &&
@@ -126,7 +124,6 @@ function FBXModel({ amplitude, url }: { amplitude: number; url: string }) {
       }
     });
 
-    // Fallback: jaw bone rotation (plain Mixamo FBX without blendshapes)
     if (!meshRef.current) {
       fbx.traverse((obj) => {
         if (!jawRef.current && obj instanceof THREE.Bone) {
@@ -139,7 +136,6 @@ function FBXModel({ amplitude, url }: { amplitude: number; url: string }) {
   useFrame(() => {
     const mesh = meshRef.current;
     if (mesh?.morphTargetDictionary && mesh.morphTargetInfluences) {
-      // ARKit blendshape path (Rocketbox)
       const set = (name: string, v: number) => {
         const i = mesh.morphTargetDictionary![name];
         if (i !== undefined)
@@ -159,7 +155,6 @@ function FBXModel({ amplitude, url }: { amplitude: number; url: string }) {
       set(BS.blinkL, blinking);
       set(BS.blinkR, blinking);
     } else if (jawRef.current) {
-      // Jaw bone fallback (plain Mixamo)
       jawRef.current.rotation.x = -Math.min(amplitude * 0.45, 0.35);
     }
   });
@@ -174,8 +169,13 @@ function FBXModel({ amplitude, url }: { amplitude: number; url: string }) {
 // ── SVG fallback face ──────────────────────────────────────────────────────────
 function SVGFace({ amplitude }: { amplitude: number }) {
   const [blink, setBlink] = useState(false);
+  const [pupil, setPupil] = useState({ x: 0, y: 0 });
+  const [bobY, setBobY] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const animRef = useRef<number>(0);
+  const tRef = useRef(0);
 
+  // Random blink
   useEffect(() => {
     const schedule = () => {
       timerRef.current = setTimeout(
@@ -191,12 +191,39 @@ function SVGFace({ amplitude }: { amplitude: number }) {
     return () => clearTimeout(timerRef.current);
   }, []);
 
+  // Idle animations: pupil drift + subtle vertical bob
+  useEffect(() => {
+    const tick = () => {
+      tRef.current += 0.012;
+      const t = tRef.current;
+      setPupil({
+        x: Math.sin(t * 0.6) * 2.2 + Math.sin(t * 1.7) * 0.8,
+        y: Math.cos(t * 0.4) * 1.4 + Math.cos(t * 1.3) * 0.5,
+      });
+      setBobY(Math.sin(t * 0.9) * 2.5);
+      animRef.current = requestAnimationFrame(tick);
+    };
+    animRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animRef.current);
+  }, []);
+
   const speaking = amplitude > 0.03;
-  const mouthOpen = Math.max(0, amplitude * 22);
-  const mx1 = 34, mx2 = 66, my = 62;
-  const mouthPath = `M ${mx1} ${my} Q 50 ${my + Math.max(2, mouthOpen)} ${mx2} ${my}`;
-  const glowSize = 20 + amplitude * 50;
-  const glowOpacity = 0.35 + amplitude * 0.55;
+  const amp = Math.max(0, Math.min(1, amplitude));
+
+  // Mouth geometry
+  const mouthOpen = amp * 30;
+  const mx1 = 34, mx2 = 66, my = 63;
+
+  // Eyebrow lift when speaking (expressive)
+  const browLift = speaking ? -3.5 : 0;
+  // Eyebrow furrow angle when thinking (idle slight arch)
+  const browSlant = speaking ? 1 : 0;
+
+  // Glow
+  const glowSize = 18 + amp * 60;
+  const glowOpacity = speaking ? 0.3 + amp * 0.6 : 0.08;
+
+  const SIZE = 270;
 
   return (
     <div
@@ -209,23 +236,29 @@ function SVGFace({ amplitude }: { amplitude: number }) {
         background: "#0f172a",
       }}
     >
-      <div style={{ position: "relative", width: 220, height: 220 }}>
+      <div
+        style={{
+          position: "relative",
+          width: SIZE,
+          height: SIZE,
+          transform: `translateY(${bobY}px)`,
+          transition: "transform 0.1s ease-out",
+        }}
+      >
+        {/* Glow ring */}
         <div
           style={{
             position: "absolute",
             inset: 0,
             borderRadius: "50%",
-            boxShadow: speaking
-              ? `0 0 ${glowSize}px rgba(99,102,241,${glowOpacity})`
-              : "none",
-            border: speaking
-              ? `2px solid rgba(99,102,241,${glowOpacity * 0.6})`
-              : "2px solid transparent",
-            transition: "box-shadow 0.1s ease, border-color 0.1s ease",
+            boxShadow: `0 0 ${glowSize}px rgba(99,102,241,${glowOpacity})`,
+            border: `2px solid rgba(99,102,241,${glowOpacity * 0.7})`,
+            transition: "box-shadow 0.12s ease, border-color 0.12s ease",
             pointerEvents: "none",
           }}
         />
-        <svg viewBox="0 0 100 100" width={220} height={220}>
+
+        <svg viewBox="0 0 100 100" width={SIZE} height={SIZE}>
           <defs>
             <radialGradient id="faceGrad" cx="38%" cy="32%" r="65%">
               <stop offset="0%" stopColor="#6366f1" />
@@ -235,45 +268,100 @@ function SVGFace({ amplitude }: { amplitude: number }) {
               <stop offset="0%" stopColor="#e0e7ff" />
               <stop offset="100%" stopColor="#c7d2fe" />
             </radialGradient>
+            <radialGradient id="pupilGrad" cx="35%" cy="30%">
+              <stop offset="0%" stopColor="#3730a3" />
+              <stop offset="100%" stopColor="#1e1b4b" />
+            </radialGradient>
           </defs>
+
+          {/* Face */}
           <circle cx="50" cy="50" r="44" fill="url(#faceGrad)" />
-          <ellipse cx="35" cy="43" rx="7" ry={blink ? 0.7 : 7} fill="url(#eyeGrad)" />
+
+          {/* Subtle sheen */}
+          <ellipse cx="38" cy="32" rx="14" ry="8" fill="white" opacity="0.06" />
+
+          {/* ── Eyebrows ── */}
+          {/* Left eyebrow */}
+          <path
+            d={`M 26 ${38 + browLift} Q 35 ${34 + browLift - browSlant} 44 ${36 + browLift}`}
+            stroke="#c7d2fe"
+            strokeWidth="2.2"
+            fill="none"
+            strokeLinecap="round"
+            style={{ transition: "d 0.15s ease" }}
+          />
+          {/* Right eyebrow */}
+          <path
+            d={`M 56 ${36 + browLift} Q 65 ${34 + browLift - browSlant} 74 ${38 + browLift}`}
+            stroke="#c7d2fe"
+            strokeWidth="2.2"
+            fill="none"
+            strokeLinecap="round"
+            style={{ transition: "d 0.15s ease" }}
+          />
+
+          {/* ── Eyes ── */}
+          {/* Left eye white */}
+          <ellipse cx="35" cy="44" rx="7.5" ry={blink ? 0.6 : 7.5} fill="url(#eyeGrad)" />
           {!blink && (
             <>
-              <circle cx="36.5" cy="44" r="3.5" fill="#1e1b4b" />
-              <circle cx="37.8" cy="42.5" r="1.2" fill="white" opacity="0.75" />
+              <circle cx={35 + pupil.x} cy={44 + pupil.y} r="3.8" fill="url(#pupilGrad)" />
+              <circle cx={35.5 + pupil.x * 0.6} cy={43 + pupil.y * 0.6} r="1.3" fill="white" opacity="0.8" />
+              {/* Subtle iris ring */}
+              <circle cx={35 + pupil.x} cy={44 + pupil.y} r="3.8" fill="none" stroke="#4338ca" strokeWidth="0.8" opacity="0.5" />
             </>
           )}
-          <ellipse cx="65" cy="43" rx="7" ry={blink ? 0.7 : 7} fill="url(#eyeGrad)" />
+
+          {/* Right eye white */}
+          <ellipse cx="65" cy="44" rx="7.5" ry={blink ? 0.6 : 7.5} fill="url(#eyeGrad)" />
           {!blink && (
             <>
-              <circle cx="66.5" cy="44" r="3.5" fill="#1e1b4b" />
-              <circle cx="67.8" cy="42.5" r="1.2" fill="white" opacity="0.75" />
+              <circle cx={65 + pupil.x} cy={44 + pupil.y} r="3.8" fill="url(#pupilGrad)" />
+              <circle cx={65.5 + pupil.x * 0.6} cy={43 + pupil.y * 0.6} r="1.3" fill="white" opacity="0.8" />
+              <circle cx={65 + pupil.x} cy={44 + pupil.y} r="3.8" fill="none" stroke="#4338ca" strokeWidth="0.8" opacity="0.5" />
             </>
           )}
-          {speaking && mouthOpen > 4 && (
+
+          {/* ── Nose hint ── */}
+          <path d="M 48 53 Q 50 57 52 53" stroke="#a5b4fc" strokeWidth="1.2" fill="none" opacity="0.4" strokeLinecap="round" />
+
+          {/* ── Mouth ── */}
+          {/* Inner mouth (only when open) */}
+          {speaking && mouthOpen > 5 && (
             <path
-              d={`M ${mx1} ${my} Q 50 ${my + mouthOpen} ${mx2} ${my} Z`}
+              d={`M ${mx1} ${my} Q 50 ${my + mouthOpen * 0.9} ${mx2} ${my} Z`}
               fill="#1e1b4b"
-              opacity="0.9"
+              opacity="0.95"
             />
           )}
-          {speaking && mouthOpen > 8 && (
-            <rect x="40" y={my} width="20" height="5" fill="white" opacity="0.92" rx="1.5" />
+          {/* Teeth (high amplitude) */}
+          {speaking && mouthOpen > 12 && (
+            <rect
+              x="38"
+              y={my}
+              width="24"
+              height={Math.min(mouthOpen * 0.25, 6)}
+              fill="white"
+              opacity="0.9"
+              rx="1.5"
+            />
           )}
+          {/* Mouth outline — smile at rest, open when speaking */}
           <path
-            d={mouthPath}
+            d={
+              speaking && mouthOpen > 4
+                ? `M ${mx1} ${my} Q 50 ${my + mouthOpen * 0.85} ${mx2} ${my}`
+                : `M ${mx1} ${my - 1} Q 50 ${my + 3} ${mx2} ${my - 1}`
+            }
             stroke="white"
-            strokeWidth="2.8"
+            strokeWidth="2.6"
             fill="none"
             strokeLinecap="round"
           />
-          {speaking && (
-            <>
-              <ellipse cx="24" cy="56" rx="7" ry="4" fill="#f472b6" opacity="0.18" />
-              <ellipse cx="76" cy="56" rx="7" ry="4" fill="#f472b6" opacity="0.18" />
-            </>
-          )}
+
+          {/* ── Blush ── */}
+          <ellipse cx="22" cy="57" rx="8" ry="4.5" fill="#f472b6" opacity={speaking ? 0.22 : 0.08} style={{ transition: "opacity 0.3s" }} />
+          <ellipse cx="78" cy="57" rx="8" ry="4.5" fill="#f472b6" opacity={speaking ? 0.22 : 0.08} style={{ transition: "opacity 0.3s" }} />
         </svg>
       </div>
     </div>
@@ -293,10 +381,10 @@ export function Avatar({ amplitude, modelUrl }: AvatarProps) {
   return (
     <ModelErrorBoundary onError={() => setUseSVG(true)}>
       <div style={{ width: "100%", height: "100%", background: "#0f172a" }}>
-        <Canvas camera={{ position: [0, 0.13, 0.55], fov: 25 }}>
-          <ambientLight intensity={0.7} />
-          <directionalLight position={[0.5, 2, 1.5]} intensity={1} />
-          <directionalLight position={[-1, 0.5, -0.5]} intensity={0.25} />
+        <Canvas camera={{ position: [0, 0.13, 0.48], fov: 22 }}>
+          <ambientLight intensity={0.8} />
+          <directionalLight position={[0.5, 2, 1.5]} intensity={1.1} />
+          <directionalLight position={[-1, 0.5, -0.5]} intensity={0.3} />
           <Suspense fallback={null}>
             {isFBX ? (
               <FBXModel amplitude={amplitude} url={url} />
