@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { AzureSTT, type PronunciationResult, type WordScore } from "@/lib/azure-stt";
 import { StreamingAudioPlayer } from "@/lib/audio-player";
+import { SessionRecorder } from "@/lib/session-recorder";
+import { supabase } from "@/lib/supabase";
 import type { LiveAvatarHandle } from "@/components/LiveAvatar";
 
 const Avatar = dynamic(
@@ -329,9 +331,11 @@ export default function Home() {
   const sttRef = useRef<AzureSTT | null>(null);
   const playerRef = useRef<StreamingAudioPlayer | null>(null);
   const liveAvatarRef = useRef<LiveAvatarHandle | null>(null);
+  const recorderRef = useRef<SessionRecorder | null>(null);
   const startedAtRef = useRef<number | null>(null);
   const isProcessingRef = useRef(false);
   const isSpeakingRef = useRef(false);
+  const sessionSavedRef = useRef(false);
   const historyRef = useRef<Msg[]>([]);
   historyRef.current = history;
 
@@ -377,10 +381,48 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elapsed]);
 
+  // ── save session to Supabase ──
+  const saveSession = async (audioBlob: Blob | null, result?: typeof cefrResult) => {
+    if (sessionSavedRef.current) return;
+    sessionSavedRef.current = true;
+
+    let audioUrl: string | null = null;
+
+    if (audioBlob && audioBlob.size > 0) {
+      const ext = audioBlob.type.includes("ogg") ? "ogg" : "webm";
+      const sessionId = crypto.randomUUID();
+      const path = `${language}/${new Date().toISOString().slice(0, 10)}/${sessionId}.${ext}`;
+      const { error } = await supabase.storage
+        .from("recordings")
+        .upload(path, audioBlob, { contentType: audioBlob.type });
+      if (!error) {
+        const { data } = supabase.storage.from("recordings").getPublicUrl(path);
+        audioUrl = data.publicUrl;
+      } else {
+        console.error("Audio upload error:", error.message);
+      }
+    }
+
+    const { error } = await supabase.from("sessions").insert({
+      language,
+      duration_seconds: elapsed,
+      cefr_level: result?.level ?? null,
+      global_score: result?.globalScore ?? null,
+      scores: result?.scores ?? null,
+      transcript: historyRef.current,
+      audio_url: audioUrl,
+      azure_scores: azureAvg,
+    });
+    if (error) console.error("Session save error:", error.message);
+  };
+
   // ── session ──
   const startSession = async () => {
     setSessionStarted(true);
+    sessionSavedRef.current = false;
     startedAtRef.current = Date.now();
+    recorderRef.current = new SessionRecorder();
+    recorderRef.current.start();
     if (!USE_HEYGEN) {
       playerRef.current = new StreamingAudioPlayer((amp) => {
         isSpeakingRef.current = amp > 0;
@@ -501,9 +543,11 @@ export default function Home() {
     setEvaluating(false);
   };
 
-  const stopSession = () => {
+  const stopSession = async () => {
     sttRef.current?.stop();
     if (!USE_HEYGEN) playerRef.current?.stop();
+    const audioBlob = await recorderRef.current?.stop() ?? null;
+    await saveSession(audioBlob, cefrResult ?? undefined);
     setSessionStarted(false);
   };
 

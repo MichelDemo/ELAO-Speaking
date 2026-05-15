@@ -11,6 +11,7 @@
     "@anthropic-ai/sdk": "^0.40.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
+    "@supabase/supabase-js": "^2.105.4",
     "buffer": "^6.0.3",
     "livekit-client": "^2.18.9",
     "microsoft-cognitiveservices-speech-sdk": "^1.43.0",
