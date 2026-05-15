@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { SYSTEM_PROMPTS, type ConvLang } from "@/lib/conversation-prompts";
+import { getSystemPrompt, type ConvLang } from "@/lib/conversation-prompts";
 
 export const runtime = "nodejs";
 
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
         const claudeStream = await anthropic.messages.stream({
           model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
           max_tokens: 300,
-          system: SYSTEM_PROMPTS[language],
+          system: getSystemPrompt(language),
           messages: [
             ...history.map(({ role, content }) => ({ role, content })),
             { role: "user", content: userMessage },
