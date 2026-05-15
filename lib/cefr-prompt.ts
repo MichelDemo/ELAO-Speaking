@@ -18,12 +18,12 @@ pour les critères qu'elles mesurent.
 Correspondance Azure → critère CEFR :
 - Azure "Précision phonétique + Prononciation" (moyenne)  → critère  accuracy   (utilise la valeur exacte)
 - Azure "Fluidité acoustique"                             → critère  fluency    (utilise la valeur exacte)
-- Azure "Complétude des énoncés"                          → critère  coherence  (utilise la valeur exacte — compléter ses énoncés reflète la cohérence du discours)
 
-Pour le critère NON couvert par Azure, évalue depuis la transcription :
-- range : critère unique qui fusionne l'étendue linguistique ET l'interaction. Évalue à la fois :
+Pour les critères NON couverts par Azure, évalue depuis la transcription :
+- range    : critère unique qui fusionne l'étendue linguistique ET l'interaction. Évalue à la fois :
     • la richesse du vocabulaire et la complexité des structures grammaticales utilisées
     • la capacité à initier, soutenir et développer la conversation de façon pertinente
+- coherence : connecteurs logiques, structure du discours, enchaînement des idées, cohésion des énoncés
 
 Score global = (accuracy + fluency + coherence + range) / 4
 
@@ -120,21 +120,19 @@ export function buildEvaluationUserMessage(
     ? (() => {
         const accuracyVal = Math.round((azureScores.pronunciation + azureScores.accuracy) / 2);
         const fluencyVal  = Math.round(azureScores.fluency);
-        const coherenceVal = Math.round(azureScores.completeness);
         return `
 SCORES AZURE — VALEURS OBLIGATOIRES (ne pas modifier) :
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  accuracy  (critère CEFR) = ${accuracyVal}   ← moyenne Azure prononciation (${Math.round(azureScores.pronunciation)}) + précision (${Math.round(azureScores.accuracy)})
 │  fluency   (critère CEFR) = ${fluencyVal}   ← Azure "Fluidité acoustique"
-│  coherence (critère CEFR) = ${coherenceVal}   ← Azure "Complétude des énoncés"
 └─────────────────────────────────────────────────────────────────────────────┘
 Mesures sur ${azureScores.count} tour${azureScores.count > 1 ? "s" : ""} — score composite Azure : ${azureScores.score}/100
 
-Évalue uniquement depuis la transcription : range (étendue linguistique + interaction fusionnées).
+Évalue depuis la transcription : range (étendue linguistique + interaction fusionnées) et coherence (connecteurs, structure du discours).
 `;
       })()
     : `
-Aucune donnée Azure disponible — évalue les 5 critères depuis la transcription.
+Aucune donnée Azure disponible — évalue les 4 critères depuis la transcription.
 `;
 
   return `Langue évaluée : ${langLabel}
@@ -144,5 +142,5 @@ Transcription des tours de l'apprenant (uniquement ses paroles, dans l'ordre) :
 
 ${userTurns.map((t, i) => `[Tour ${i + 1}] ${t}`).join("\n")}
 
-Évalue maintenant. Rappel : si des scores Azure sont fournis ci-dessus, utilise-les EXACTEMENT comme valeurs des critères accuracy, fluency et coherence. Évalue uniquement range depuis la transcription. Le JSON final doit contenir exactement 4 scores : range, accuracy, fluency, coherence.`;
+Évalue maintenant. Rappel : si des scores Azure sont fournis ci-dessus, utilise-les EXACTEMENT comme valeurs des critères accuracy et fluency. Évalue range et coherence depuis la transcription. Le JSON final doit contenir exactement 4 scores : range, accuracy, fluency, coherence.`;
 }
