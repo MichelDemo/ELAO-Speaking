@@ -368,9 +368,12 @@ export default function Home() {
     return () => clearInterval(id);
   }, [sessionStarted]);
 
-  // Auto-evaluate at 4 min
+  // Auto-evaluate and close conversation at 4 min
   useEffect(() => {
-    if (elapsed === 240 && !cefrResult && !evaluating) runEvaluation();
+    if (elapsed === 240 && !cefrResult && !evaluating) {
+      runEvaluation();
+      handleUserTurn("__END__");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elapsed]);
 
@@ -408,26 +411,27 @@ export default function Home() {
   const handleUserTurn = async (userText: string, pronunciation?: PronunciationResult) => {
     isProcessingRef.current = true;
     const isStart = userText === "__START__";
+    const isEnd   = userText === "__END__";
 
-    const newHistory: Msg[] = isStart
+    const newHistory: Msg[] = (isStart || isEnd)
       ? historyRef.current
       : [...historyRef.current, { role: "user", content: userText, pronunciation }];
 
-    if (!isStart) setHistory(newHistory);
+    if (!isStart && !isEnd) setHistory(newHistory);
     setStreamingAssistant("");
+
+    const userMessage = isStart
+      ? language === "fr"
+        ? "Bonjour, démarrons la conversation."
+        : "Hello, let's start the conversation."
+      : isEnd
+        ? "__END__"
+        : userText;
 
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        language,
-        history: newHistory,
-        userMessage: isStart
-          ? language === "fr"
-            ? "Bonjour, démarrons la conversation."
-            : "Hello, let's start the conversation."
-          : userText,
-      }),
+      body: JSON.stringify({ language, history: newHistory, userMessage }),
     });
 
     if (!res.body) {
@@ -476,7 +480,9 @@ export default function Home() {
         }
       }
     }
-    isProcessingRef.current = false;
+    // After the closing message, keep isProcessingRef true so STT
+    // no longer submits new user turns.
+    if (!isEnd) isProcessingRef.current = false;
   };
 
   const runEvaluation = async () => {
