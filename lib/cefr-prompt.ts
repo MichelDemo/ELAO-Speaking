@@ -16,9 +16,9 @@ arrondir autrement, ou de les remplacer par ta propre estimation. Ces mesures ac
 pour les critères qu'elles mesurent.
 
 Correspondance Azure → critère CEFR :
-- Azure "Qualité de prononciation"  → critère  accuracy   (utilise la valeur exacte)
-- Azure "Fluidité acoustique"       → critère  fluency    (utilise la valeur exacte)
-- Azure "Précision phonétique"      → critère  coherence  (utilise la valeur exacte — mesure la complétude/intégrité des énoncés)
+- Azure "Précision phonétique + Prononciation" (moyenne)  → critère  accuracy   (utilise la valeur exacte)
+- Azure "Fluidité acoustique"                             → critère  fluency    (utilise la valeur exacte)
+- Azure "Complétude des énoncés"                          → critère  coherence  (utilise la valeur exacte — compléter ses énoncés reflète la cohérence du discours)
 
 Pour les critères NON couverts par Azure, évalue depuis la transcription :
 - range       : richesse du vocabulaire et complexité des structures grammaticales
@@ -112,18 +112,22 @@ export function buildEvaluationUserMessage(
     "anglais";
 
   const azureSection = azureScores
-    ? `
+    ? (() => {
+        const accuracyVal = Math.round((azureScores.pronunciation + azureScores.accuracy) / 2);
+        const fluencyVal  = Math.round(azureScores.fluency);
+        const coherenceVal = Math.round(azureScores.completeness);
+        return `
 SCORES AZURE — VALEURS OBLIGATOIRES (ne pas modifier) :
-┌─────────────────────────────────────────────────────────────────┐
-│  accuracy  (critère CEFR) = ${Math.round(azureScores.pronunciation)}   ← Azure "Qualité de prononciation"
-│  fluency   (critère CEFR) = ${Math.round(azureScores.fluency)}   ← Azure "Fluidité acoustique"
-│  coherence (critère CEFR) = ${Math.round(azureScores.accuracy)}   ← Azure "Précision phonétique"
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  accuracy  (critère CEFR) = ${accuracyVal}   ← moyenne Azure prononciation (${Math.round(azureScores.pronunciation)}) + précision (${Math.round(azureScores.accuracy)})
+│  fluency   (critère CEFR) = ${fluencyVal}   ← Azure "Fluidité acoustique"
+│  coherence (critère CEFR) = ${coherenceVal}   ← Azure "Complétude des énoncés"
+└─────────────────────────────────────────────────────────────────────────────┘
 Mesures sur ${azureScores.count} tour${azureScores.count > 1 ? "s" : ""} — score composite Azure : ${azureScores.score}/100
-Complétude des énoncés : ${Math.round(azureScores.completeness)}/100 (information complémentaire)
 
 Évalue uniquement depuis la transcription : range, interaction.
-`
+`;
+      })()
     : `
 Aucune donnée Azure disponible — évalue les 5 critères depuis la transcription.
 `;
