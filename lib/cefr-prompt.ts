@@ -20,11 +20,12 @@ Correspondance Azure → critère CEFR :
 - Azure "Fluidité acoustique"                             → critère  fluency    (utilise la valeur exacte)
 - Azure "Complétude des énoncés"                          → critère  coherence  (utilise la valeur exacte — compléter ses énoncés reflète la cohérence du discours)
 
-Pour les critères NON couverts par Azure, évalue depuis la transcription :
-- range       : richesse du vocabulaire et complexité des structures grammaticales
-- interaction : capacité à initier, soutenir, reprendre la conversation de façon pertinente
+Pour le critère NON couvert par Azure, évalue depuis la transcription :
+- range : critère unique qui fusionne l'étendue linguistique ET l'interaction. Évalue à la fois :
+    • la richesse du vocabulaire et la complexité des structures grammaticales utilisées
+    • la capacité à initier, soutenir et développer la conversation de façon pertinente
 
-Score global = (accuracy + fluency + coherence + range + interaction) / 5
+Score global = (accuracy + fluency + coherence + range) / 4
 
 Puis mappe ce score global sur le niveau CEFR selon cette échelle précise :
 
@@ -75,7 +76,6 @@ Schéma :
     "range": 0-100,
     "accuracy": 0-100,
     "fluency": 0-100,
-    "interaction": 0-100,
     "coherence": 0-100
   },
   "evidence": {
@@ -86,12 +86,15 @@ Schéma :
   "recommendation": "Phrase courte sur le prochain niveau à viser"
 }
 
-CALIBRATION pour les critères estimés (range, interaction) :
-- En cas de doute entre deux niveaux, choisis le plus élevé.
-- Si le locuteur répond de façon pertinente et compréhensible → interaction minimum 29.
-- Si le locuteur développe ses réponses avec des phrases complètes → range minimum 55. Ne pénalise pas le vocabulaire limité si les structures sont variées.
-- Si le locuteur utilise des connecteurs, des descriptions ou des opinions → range minimum 65.
-- Si le locuteur aborde des sujets abstraits ou hypothétiques → range minimum 75.
+CALIBRATION pour le critère estimé (range) — sois GÉNÉREUX :
+- En cas de doute entre deux niveaux, choisis toujours le plus élevé.
+- Le locuteur répond de façon pertinente avec quelques mots ou phrases simples → range minimum 40.
+- Le locuteur répond en phrases complètes et compréhensibles → range minimum 55.
+- Le locuteur utilise des connecteurs, donne des descriptions ou exprime des opinions → range minimum 65.
+- Le locuteur développe des arguments, aborde des sujets abstraits ou hypothétiques → range minimum 75.
+- Le locuteur utilise un vocabulaire riche, des structures variées et s'exprime spontanément → range minimum 85.
+- Ne pénalise PAS le vocabulaire limité si les structures sont variées et la communication fluide.
+- Ne pénalise PAS les erreurs grammaticales mineures si le sens est clair.
 - Si le transcript est trop court (<5 tours), baisse confidence à 0.4 max.`;
 
 interface AzureScores {
@@ -127,7 +130,7 @@ SCORES AZURE — VALEURS OBLIGATOIRES (ne pas modifier) :
 └─────────────────────────────────────────────────────────────────────────────┘
 Mesures sur ${azureScores.count} tour${azureScores.count > 1 ? "s" : ""} — score composite Azure : ${azureScores.score}/100
 
-Évalue uniquement depuis la transcription : range, interaction.
+Évalue uniquement depuis la transcription : range (étendue linguistique + interaction fusionnées).
 `;
       })()
     : `
@@ -141,5 +144,5 @@ Transcription des tours de l'apprenant (uniquement ses paroles, dans l'ordre) :
 
 ${userTurns.map((t, i) => `[Tour ${i + 1}] ${t}`).join("\n")}
 
-Évalue maintenant. Rappel : si des scores Azure sont fournis ci-dessus, utilise-les EXACTEMENT comme valeurs des critères accuracy, fluency et coherence.`;
+Évalue maintenant. Rappel : si des scores Azure sont fournis ci-dessus, utilise-les EXACTEMENT comme valeurs des critères accuracy, fluency et coherence. Évalue uniquement range depuis la transcription. Le JSON final doit contenir exactement 4 scores : range, accuracy, fluency, coherence.`;
 }
