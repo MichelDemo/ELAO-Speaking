@@ -61,6 +61,15 @@ function scoreBarColor(score: number): string {
   return "#fb923c";
 }
 
+/**
+ * Azure free-speech mode clusters scores in the 75-95 range regardless of CEFR level.
+ * This power-law curve spreads the upper range: 90→86, 85→79, 80→72, 75→65.
+ * Applied for display only — raw scores are still passed to Claude as acoustic context.
+ */
+function deflateAzure(raw: number): number {
+  return Math.round(Math.pow(raw / 100, 1.4) * 100);
+}
+
 // ─── small reusable bar ───────────────────────────────────────────────────────
 
 function Bar({
@@ -122,17 +131,17 @@ function AzurePanel({ data }: { data: AzureAvg | null }) {
       ) : (
         <>
           <div style={{ fontSize: 40, fontWeight: 800, lineHeight: 1.1, color: "#f1f5f9" }}>
-            {data.score}<span style={{ fontSize: 16, color: "#4b5563" }}>/100</span>
+            {deflateAzure(data.score)}<span style={{ fontSize: 16, color: "#4b5563" }}>/100</span>
           </div>
           <div style={{ fontSize: 10, color: "#4b5563", marginBottom: 8 }}>
             Score acoustique · {data.count} tour{data.count > 1 ? "s" : ""}
           </div>
-          <Bar label="Prononciation" value={data.pronunciation} />
-          <Bar label="Précision" value={data.accuracy} />
-          <Bar label="Fluidité" value={data.fluency} />
+          <Bar label="Prononciation" value={deflateAzure(data.pronunciation)} />
+          <Bar label="Précision" value={deflateAzure(data.accuracy)} />
+          <Bar label="Fluidité" value={deflateAzure(data.fluency)} />
           <Bar label="Complétude" value={data.completeness} />
           <div style={{ fontSize: 9, color: "#374151", marginTop: 4 }}>
-            Mesure acoustique uniquement — pas de niveau CEFR
+            Mesure acoustique calibrée — pas de niveau CEFR
           </div>
         </>
       )}
