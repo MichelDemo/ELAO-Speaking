@@ -171,7 +171,7 @@ function SVGFace({ amplitude }: { amplitude: number }) {
   const [blink, setBlink] = useState(false);
   const [pupil, setPupil] = useState({ x: 0, y: 0 });
   const [bobY, setBobY] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const animRef = useRef<number>(0);
   const tRef = useRef(0);
 

@@ -39,10 +39,10 @@ interface RecognizerHandle {
 export class AzureSTT {
   private recognizer: RecognizerHandle | null = null;
   private cb: AzureSttCallbacks;
-  private language: "fr" | "en";
+  private language: "fr" | "en" | "nl-BE";
   private region: string;
 
-  constructor(language: "fr" | "en", callbacks: AzureSttCallbacks, region = "westeurope") {
+  constructor(language: "fr" | "en" | "nl-BE", callbacks: AzureSttCallbacks, region = "westeurope") {
     this.language = language;
     this.cb = callbacks;
     this.region = region;

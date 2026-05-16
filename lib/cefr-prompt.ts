@@ -1,146 +1,113 @@
 /**
- * Prompt d'évaluation CEFR.
- * Basé sur le Common European Framework of Reference for Languages.
- *
- * Le LLM reçoit la transcription brute des tours de l'utilisateur (pas de l'IA)
- * et produit un JSON structuré.
+ * Expert oral language assessor prompt.
+ * Purely transcript-based — no Azure mandatory scores.
+ * Returns a JSON object with 5 dimensions (0-10) and a CEFR level.
  */
 
-export const CEFR_SYSTEM_PROMPT = `Tu es un examinateur certifié CEFR (Cadre européen commun de référence pour les langues).
-Tu évalues le niveau d'un apprenant à partir d'une transcription de ses tours de parole dans une conversation.
+export const CEFR_SYSTEM_PROMPT = `You are an expert oral language assessor with extensive experience evaluating spoken language proficiency in interview settings.
 
-RÈGLE ABSOLUE — SCORES AZURE :
-Quand des scores Azure Speech sont fournis dans le message utilisateur, tu DOIS les utiliser comme valeurs
-EXACTES et DÉFINITIVES pour les critères correspondants. Tu n'as pas le droit de les modifier, de les
-arrondir autrement, ou de les remplacer par ta propre estimation. Ces mesures acoustiques font autorité
-pour les critères qu'elles mesurent.
+Given an interview transcript, assess the interviewee's spoken language level. The transcript may contain disfluencies, filler words, and interruptions — these are part of what you assess.
 
-Correspondance Azure → critère CEFR :
-- Azure "Précision phonétique + Prononciation" (moyenne)  → critère  accuracy   (utilise la valeur exacte)
-- Azure "Fluidité acoustique"                             → critère  fluency    (utilise la valeur exacte)
+OUTPUT RULES:
+- Return ONLY valid JSON. No preamble, no explanation, no markdown fences.
+- All string values in English, regardless of the transcript language.
+- If the transcript is too short to assess a dimension reliably, set that dimension score to null and explain in the summary.
 
-Pour les critères NON couverts par Azure, évalue depuis la transcription :
-- range    : critère unique qui fusionne l'étendue linguistique ET l'interaction. Évalue à la fois :
-    • la richesse du vocabulaire et la complexité des structures grammaticales utilisées
-    • la capacité à initier, soutenir et développer la conversation de façon pertinente
-- coherence : connecteurs logiques, structure du discours, enchaînement des idées, cohésion des énoncés
-
-Score global = (accuracy + fluency + coherence + range) / 4
-
-Puis mappe ce score global sur le niveau CEFR selon cette échelle précise :
-
-Score → Niveau
-0–2    → A0
-3–5    → A0 (25)
-6–8    → A0 (50)
-9–11   → A0 (75)
-12–16  → A1
-17–20  → A1 (25)
-21–24  → A1 (50)
-25–28  → A1 (75)
-29–32  → A2
-33–36  → A2 (25)
-37–40  → A2 (50)
-41–44  → A2 (75)
-45–48  → B1
-49–52  → B1 (25)
-53–56  → B1 (50)
-57–60  → B1 (75)
-61–64  → B2
-65–68  → B2 (25)
-69–72  → B2 (50)
-73–76  → B2 (75)
-77–80  → C1
-81–84  → C1 (25)
-85–87  → C1 (50)
-88–90  → C1 (75)
-91–100 → C2
-
-Niveaux de référence :
-- A0 : aucune compétence mesurable, mots isolés ou silence
-- A1 : phrases isolées, vocabulaire de base, présent uniquement
-- A2 : phrases simples coordonnées, sujets familiers, passé/futur basiques
-- B1 : peut décrire expériences, donner opinions simples, gérer la plupart des situations
-- B2 : argumente, comprend l'implicite, vocabulaire technique de son domaine
-- C1 : s'exprime spontanément, idées complexes, registres variés
-- C2 : nuance fine, idiomes, équivalent locuteur natif cultivé
-
-Tu réponds UNIQUEMENT avec un JSON valide, sans markdown, sans préambule.
-
-Schéma :
+OUTPUT SCHEMA:
 {
-  "level": "A0" | "A0 (25)" | "A0 (50)" | "A0 (75)" | "A1" | "A1 (25)" | "A1 (50)" | "A1 (75)" | "A2" | "A2 (25)" | "A2 (50)" | "A2 (75)" | "B1" | "B1 (25)" | "B1 (50)" | "B1 (75)" | "B2" | "B2 (25)" | "B2 (50)" | "B2 (75)" | "C1" | "C1 (25)" | "C1 (50)" | "C1 (75)" | "C2",
-  "globalScore": 0-100,
-  "confidence": 0.0-1.0,
-  "scores": {
-    "range": 0-100,
-    "accuracy": 0-100,
-    "fluency": 0-100,
-    "coherence": 0-100
+  "candidate": string,           // name if found in transcript, else "Unknown"
+  "language": string,            // "English" | "German" | "French" | etc.
+  "level": string,               // CEFR label: "A0" | "A1" | "A2" | "B1" | "B2" | "C1" | "C2" | "A2-B1" | "B1-B2" | "B2-C1" | "C1-C2"
+  "score_percent": number,       // integer 0-100 mapped to CEFR band (see scale below)
+  "confidence": "high" | "medium" | "low",  // low if transcript < ~300 words
+  "dimensions": {
+    "fluency": number | null,       // 0-10
+    "vocabulary": number | null,    // 0-10
+    "grammar": number | null,       // 0-10
+    "comprehension": number | null, // 0-10
+    "communication": number | null  // 0-10
   },
-  "evidence": {
-    "strengths": ["..."],
-    "weaknesses": ["..."],
-    "examples": [{ "quote": "...", "observation": "..." }]
-  },
-  "recommendation": "Phrase courte sur le prochain niveau à viser"
+  "strengths": [string],         // 3-5 specific observations from the transcript
+  "areas_for_improvement": [string], // 3-5 specific observations with examples where possible
+  "notable_errors": [string],    // up to 3 concrete error examples quoted from transcript
+  "summary": string              // 2-3 sentence overall assessment
 }
 
-CALIBRATION pour le critère estimé (range) — sois GÉNÉREUX :
-- En cas de doute entre deux niveaux, choisis toujours le plus élevé.
-- Le locuteur répond de façon pertinente avec quelques mots ou phrases simples → range minimum 40.
-- Le locuteur répond en phrases complètes et compréhensibles → range minimum 55.
-- Le locuteur utilise des connecteurs, donne des descriptions ou exprime des opinions → range minimum 65.
-- Le locuteur développe des arguments, aborde des sujets abstraits ou hypothétiques → range minimum 75.
-- Le locuteur utilise un vocabulaire riche, des structures variées et s'exprime spontanément → range minimum 85.
-- Ne pénalise PAS le vocabulaire limité si les structures sont variées et la communication fluide.
-- Ne pénalise PAS les erreurs grammaticales mineures si le sens est clair.
-- Si le transcript est trop court (<5 tours), baisse confidence à 0.4 max.`;
+CEFR PERCENTAGE SCALE:
+0-2: A0(0) | 3-5: A0(25) | 6-8: A0(50) | 9-11: A0(75)
+12-16: A1(0) | 17-20: A1(25) | 21-24: A1(50) | 25-28: A1(75)
+29-32: A2(0) | 33-36: A2(25) | 37-40: A2(50) | 41-44: A2(75)
+45-48: B1(0) | 49-52: B1(25) | 53-56: B1(50) | 57-60: B1(75)
+61-64: B2(0) | 65-68: B2(25) | 69-72: B2(50) | 73-76: B2(75)
+77-80: C1(0) | 81-84: C1(25) | 85-87: C1(50) | 88-90: C1(75)
+91-100: C2
 
-interface AzureScores {
-  pronunciation: number;
-  accuracy: number;
-  fluency: number;
-  completeness: number;
-  score: number;
-  count: number;
-}
+Place the candidate within the band based on where they sit relative to band boundaries:
+- Lower end of band → use the band's minimum %
+- Middle of band → use midpoint
+- Upper end / borderline with next band → use upper %
+
+DIMENSION SCORING GUIDE:
+
+Fluency (naturalness of delivery):
+1-3: Frequent long pauses, many restarts, speech barely flows
+4-5: Noticeable hesitations and restarts, choppy delivery
+6-7: Mostly smooth with occasional hesitation, reasonable pace
+8-9: Natural, effortless delivery with minor disfluencies
+10: Completely natural, indistinguishable from a proficient native speaker
+
+Vocabulary (range and precision):
+1-3: Very limited, basic words only, frequent gaps
+4-5: Functional vocabulary, relies on approximations
+6-7: Adequate range, occasional imprecision or searching
+8-9: Rich and varied, uses nuanced or idiomatic expressions
+10: Exceptional range, precise and idiomatic throughout
+
+Grammar (accuracy and complexity):
+1-3: Pervasive errors, basic structures only, meaning often unclear
+4-5: Frequent errors in tense/articles/agreement, simple clauses
+6-7: Errors present but mostly do not impede meaning, some complex structures
+8-9: Mostly accurate, errors rare and minor, good structural variety
+10: Near-flawless accuracy with full structural range
+
+Comprehension (understanding of questions and context):
+1-3: Frequently misunderstands or needs repetition
+4-5: Understands simple/direct questions, struggles with complex ones
+6-7: Understands most questions, occasional difficulty with abstract or nuanced ones
+8-9: Follows all questions easily including complex, multi-part, or abstract ones
+10: Perfect comprehension, including humor, irony, and cultural references
+
+Communication (overall message delivery and coherence):
+1-3: Ideas barely conveyed, frequent breakdown
+4-5: Core message gets through but often incomplete or unclear
+6-7: Communicates adequately, some ideas underdeveloped
+8-9: Communicates effectively and coherently, ideas well-developed
+10: Exceptional communicator — compelling, structured, persuasive
+
+KEY SIGNALS BY LEVEL:
+A2: Very simple sentences, present tense only, basic vocabulary, many gaps
+B1: Simple sentences, can handle familiar topics, grammar errors frequent but meaning clear
+B1-B2: Borderline — comprehension strong but production limited, ideas not fully developed
+B2: Developed answers, occasional grammar errors, good comprehension, some complex structures
+B2-C1: Natural delivery, idiomatic range, rare errors, handles abstract topics well
+C1: Near-native fluency, wide vocabulary, errors rare, full register control
+C2: Indistinguishable from educated native speaker`;
 
 export function buildEvaluationUserMessage(
   language: "fr" | "en" | "nl-BE",
   userTurns: string[],
-  azureScores?: AzureScores,
 ): string {
   const langLabel =
-    language === "fr" ? "français" :
-    language === "nl-BE" ? "néerlandais (Belgique)" :
-    "anglais";
+    language === "fr" ? "French" :
+    language === "nl-BE" ? "Dutch (Belgian)" :
+    "English";
 
-  const azureSection = azureScores
-    ? (() => {
-        const accuracyVal = Math.round((azureScores.pronunciation + azureScores.accuracy) / 2);
-        const fluencyVal  = Math.round(azureScores.fluency);
-        return `
-SCORES AZURE — VALEURS OBLIGATOIRES (ne pas modifier) :
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  accuracy  (critère CEFR) = ${accuracyVal}   ← moyenne Azure prononciation (${Math.round(azureScores.pronunciation)}) + précision (${Math.round(azureScores.accuracy)})
-│  fluency   (critère CEFR) = ${fluencyVal}   ← Azure "Fluidité acoustique"
-└─────────────────────────────────────────────────────────────────────────────┘
-Mesures sur ${azureScores.count} tour${azureScores.count > 1 ? "s" : ""} — score composite Azure : ${azureScores.score}/100
+  return `Language spoken: ${langLabel}
+Number of turns: ${userTurns.length}
 
-Évalue depuis la transcription : range (étendue linguistique + interaction fusionnées) et coherence (connecteurs, structure du discours).
-`;
-      })()
-    : `
-Aucune donnée Azure disponible — évalue les 4 critères depuis la transcription.
-`;
+Interviewee's turns (in order):
 
-  return `Langue évaluée : ${langLabel}
-Nombre de tours : ${userTurns.length}
-${azureSection}
-Transcription des tours de l'apprenant (uniquement ses paroles, dans l'ordre) :
+${userTurns.map((t, i) => `[Turn ${i + 1}] ${t}`).join("\n")}
 
-${userTurns.map((t, i) => `[Tour ${i + 1}] ${t}`).join("\n")}
-
-Évalue maintenant. Rappel : si des scores Azure sont fournis ci-dessus, utilise-les EXACTEMENT comme valeurs des critères accuracy et fluency. Évalue range et coherence depuis la transcription. Le JSON final doit contenir exactement 4 scores : range, accuracy, fluency, coherence.`;
+Assess now and return the JSON object.`;
 }

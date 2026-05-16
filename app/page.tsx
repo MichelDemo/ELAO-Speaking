@@ -28,46 +28,22 @@ type Msg = {
 };
 
 interface CefrResult {
+  candidate: string;
+  language: string;
   level: string;
-  globalScore: number;
-  confidence: number;
-  scores: Record<string, number>; // 0-100 per criterion
-  evidence: {
-    strengths: string[];
-    weaknesses: string[];
-    examples: { quote: string; observation: string }[];
+  score_percent: number;
+  confidence: "high" | "medium" | "low";
+  dimensions: {
+    fluency: number | null;
+    vocabulary: number | null;
+    grammar: number | null;
+    comprehension: number | null;
+    communication: number | null;
   };
-  recommendation: string;
-}
-
-// ─── CEFR scale (mirrors cefr-prompt.ts) ─────────────────────────────────────
-
-function scoreToLevel(score: number): string {
-  if (score <= 2) return "A0";
-  if (score <= 5) return "A0 (25)";
-  if (score <= 8) return "A0 (50)";
-  if (score <= 11) return "A0 (75)";
-  if (score <= 16) return "A1";
-  if (score <= 20) return "A1 (25)";
-  if (score <= 24) return "A1 (50)";
-  if (score <= 28) return "A1 (75)";
-  if (score <= 32) return "A2";
-  if (score <= 36) return "A2 (25)";
-  if (score <= 40) return "A2 (50)";
-  if (score <= 44) return "A2 (75)";
-  if (score <= 48) return "B1";
-  if (score <= 52) return "B1 (25)";
-  if (score <= 56) return "B1 (50)";
-  if (score <= 60) return "B1 (75)";
-  if (score <= 64) return "B2";
-  if (score <= 68) return "B2 (25)";
-  if (score <= 72) return "B2 (50)";
-  if (score <= 76) return "B2 (75)";
-  if (score <= 80) return "C1";
-  if (score <= 84) return "C1 (25)";
-  if (score <= 87) return "C1 (50)";
-  if (score <= 90) return "C1 (75)";
-  return "C2";
+  strengths: string[];
+  areas_for_improvement: string[];
+  notable_errors: string[];
+  summary: string;
 }
 
 // ─── colour helpers ──────────────────────────────────────────────────────────
@@ -166,92 +142,99 @@ function AzurePanel({ data }: { data: AzureAvg | null }) {
 
 // ─── Claude CEFR panel ────────────────────────────────────────────────────────
 
+const CONFIDENCE_COLOR: Record<string, string> = {
+  high: "#4ade80",
+  medium: "#facc15",
+  low: "#fb923c",
+};
+
 function CefrPanel({ result }: { result: CefrResult }) {
+  const dims = Object.entries(result.dimensions) as [string, number | null][];
+
   return (
     <div
       style={{
         padding: 12,
         background: "linear-gradient(135deg, #1e3a8a 0%, #4f46e5 100%)",
         borderRadius: 8,
-        minHeight: 120,
       }}
     >
-      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", fontWeight: 700, letterSpacing: 1 }}>
-        CLAUDE CEFR
+      {/* Header row */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+        <div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", fontWeight: 700, letterSpacing: 1 }}>
+            ORAL ASSESSMENT
+          </div>
+          <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1.1 }}>{result.level}</div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>
+            Score {result.score_percent}/100
+          </div>
+        </div>
+        <span
+          style={{
+            padding: "2px 8px",
+            borderRadius: 10,
+            fontSize: 10,
+            fontWeight: 700,
+            background: CONFIDENCE_COLOR[result.confidence] ?? "#9ca3af",
+            color: "#000",
+            marginTop: 4,
+          }}
+        >
+          {result.confidence.toUpperCase()}
+        </span>
       </div>
-      <div style={{ fontSize: 40, fontWeight: 800, lineHeight: 1.1 }}>{result.level}</div>
-      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", marginBottom: 8 }}>
-        Score {result.globalScore ?? "—"}/100 · Confiance {Math.round(result.confidence * 100)}%
+
+      {/* Dimension bars (0-10) */}
+      <div style={{ marginBottom: 8 }}>
+        {dims.map(([key, val]) =>
+          val !== null ? (
+            <Bar key={key} label={key} value={val} max={10} />
+          ) : (
+            <div key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginBottom: 3 }}>
+              <span style={{ width: 80, color: "#9ca3af", flexShrink: 0 }}>{key}</span>
+              <span style={{ color: "#4b5563", fontSize: 10 }}>n/a</span>
+            </div>
+          )
+        )}
       </div>
-      {Object.entries(result.scores).map(([k, v]) => (
-        <Bar key={k} label={k} value={Math.round(v)} />
-      ))}
-      {result.evidence?.strengths?.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)" }}>Points forts</div>
-          <ul style={{ margin: "3px 0", paddingLeft: 16, fontSize: 11 }}>
-            {result.evidence.strengths.slice(0, 2).map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
+
+      {/* Strengths */}
+      {result.strengths?.length > 0 && (
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", marginBottom: 2 }}>Strengths</div>
+          <ul style={{ margin: 0, paddingLeft: 14, fontSize: 11, lineHeight: 1.5 }}>
+            {result.strengths.slice(0, 3).map((s, i) => <li key={i}>{s}</li>)}
           </ul>
         </div>
       )}
-    </div>
-  );
-}
 
-// ─── Comparison table (shown when both results available) ─────────────────────
+      {/* Areas for improvement */}
+      {result.areas_for_improvement?.length > 0 && (
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", marginBottom: 2 }}>To improve</div>
+          <ul style={{ margin: 0, paddingLeft: 14, fontSize: 11, lineHeight: 1.5 }}>
+            {result.areas_for_improvement.slice(0, 2).map((s, i) => <li key={i}>{s}</li>)}
+          </ul>
+        </div>
+      )}
 
-function ComparisonTable({ azure, cefr }: { azure: AzureAvg; cefr: CefrResult }) {
-  const rows: { label: string; azureVal: number; cefrKey: string }[] = [
-    { label: "Précision", azureVal: azure.accuracy, cefrKey: "accuracy" },
-    { label: "Fluidité", azureVal: azure.fluency, cefrKey: "fluency" },
-  ];
+      {/* Notable errors */}
+      {result.notable_errors?.length > 0 && (
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", marginBottom: 2 }}>Notable errors</div>
+          <ul style={{ margin: 0, paddingLeft: 14, fontSize: 11, lineHeight: 1.5, color: "#fca5a5" }}>
+            {result.notable_errors.slice(0, 2).map((s, i) => <li key={i}>{s}</li>)}
+          </ul>
+        </div>
+      )}
 
-  return (
-    <div
-      style={{
-        padding: "8px 12px",
-        background: "#111827",
-        border: "1px solid #374151",
-        borderRadius: 8,
-        fontSize: 11,
-      }}
-    >
-      <div style={{ color: "#9ca3af", fontWeight: 700, marginBottom: 6, letterSpacing: 1, fontSize: 10 }}>
-        ACOUSTIQUE vs CEFR
-      </div>
-
-      {/* Score rows */}
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ color: "#6b7280" }}>
-            <th style={{ textAlign: "left", fontWeight: 400, paddingBottom: 4 }}>Critère</th>
-            <th style={{ textAlign: "center", fontWeight: 400, paddingBottom: 4 }}>Azure</th>
-            <th style={{ textAlign: "center", fontWeight: 400, paddingBottom: 4 }}>Claude</th>
-            <th style={{ textAlign: "center", fontWeight: 400, paddingBottom: 4 }}>Δ</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ label, azureVal, cefrKey }) => {
-            const cefrPct = Math.round(cefr.scores[cefrKey] ?? 0);
-            const delta = Math.round(azureVal) - cefrPct;
-            return (
-              <tr key={cefrKey}>
-                <td style={{ paddingBottom: 3, color: "#d1d5db" }}>{label}</td>
-                <td style={{ textAlign: "center", color: wordColor(azureVal) }}>{Math.round(azureVal)}</td>
-                <td style={{ textAlign: "center", color: wordColor(cefrPct) }}>{cefrPct}</td>
-                <td style={{ textAlign: "center", color: Math.abs(delta) <= 10 ? "#9ca3af" : delta > 0 ? "#60a5fa" : "#f87171" }}>
-                  {delta > 0 ? "+" : ""}{delta}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <div style={{ marginTop: 6, color: "#4b5563", fontSize: 10 }}>
-        Azure = phonétique acoustique · Claude = compétence conversationnelle
-      </div>
+      {/* Summary */}
+      {result.summary && (
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", lineHeight: 1.5, borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 6 }}>
+          {result.summary}
+        </div>
+      )}
     </div>
   );
 }
@@ -407,8 +390,8 @@ export default function Home() {
       language,
       duration_seconds: elapsed,
       cefr_level: result?.level ?? null,
-      global_score: result?.globalScore ?? null,
-      scores: result?.scores ?? null,
+      global_score: result?.score_percent ?? null,
+      scores: result?.dimensions ?? null,
       transcript: historyRef.current,
       audio_url: audioUrl,
       azure_scores: azureAvg,
@@ -536,7 +519,7 @@ export default function Home() {
     const res = await fetch("/api/evaluate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ language, userTurns, azureScores: azureAvg }),
+      body: JSON.stringify({ language, userTurns }),
     });
     const data = await res.json();
     setCefrResult(data);
@@ -660,15 +643,11 @@ export default function Home() {
                 display: "grid",
                 gridTemplateColumns: cefrResult ? "1fr 1fr" : "1fr",
                 gap: 8,
-                marginBottom: cefrResult && azureAvg ? 8 : 0,
               }}
             >
               <AzurePanel data={azureAvg} />
               {cefrResult && <CefrPanel result={cefrResult} />}
             </div>
-            {cefrResult && azureAvg && (
-              <ComparisonTable azure={azureAvg} cefr={cefrResult} />
-            )}
           </div>
 
           {/* Transcript */}
