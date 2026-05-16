@@ -107,7 +107,6 @@ interface AzureAvg {
   pronunciation: number;
   accuracy: number;
   fluency: number;
-  completeness: number;
   score: number;
   count: number;
 }
@@ -139,7 +138,6 @@ function AzurePanel({ data }: { data: AzureAvg | null }) {
           <Bar label="Prononciation" value={deflateAzure(data.pronunciation)} />
           <Bar label="Précision" value={deflateAzure(data.accuracy)} />
           <Bar label="Fluidité" value={deflateAzure(data.fluency)} />
-          <Bar label="Complétude" value={data.completeness} />
           <div style={{ fontSize: 9, color: "#374151", marginTop: 4 }}>
             Mesure acoustique calibrée — pas de niveau CEFR
           </div>
@@ -255,7 +253,6 @@ function UtteranceBadges({ p }: { p: PronunciationResult }) {
     ["P", p.pronunciationScore, "Pronunciation"],
     ["A", p.accuracyScore, "Accuracy"],
     ["F", p.fluencyScore, "Fluency"],
-    ["C", p.completenessScore, "Completeness"],
   ];
   return (
     <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
@@ -342,13 +339,11 @@ export default function Home() {
     const pronunciation = avg("pronunciationScore");
     const accuracy = avg("accuracyScore");
     const fluency = avg("fluencyScore");
-    const completeness = avg("completenessScore");
     const score = Math.round((pronunciation + accuracy + fluency) / 3);
     return {
       pronunciation,
       accuracy,
       fluency,
-      completeness,
       score,
       count: scored.length,
     };
