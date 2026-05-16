@@ -8,9 +8,8 @@ import type { ConvLang } from "@/lib/conversation-prompts";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-interface AzureContext {
+interface SttContext {
   pronunciation: number;
-  accuracy: number;
   wpm: number;
   count: number;
 }
@@ -18,7 +17,7 @@ interface AzureContext {
 interface EvalRequest {
   language: ConvLang;
   userTurns: string[];
-  azureContext?: AzureContext | null;
+  azureContext?: SttContext | null;
 }
 
 export async function POST(req: Request) {

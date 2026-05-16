@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { AzureSTT, type PronunciationResult, type WordScore } from "@/lib/azure-stt";
+import { DeepgramSTT, type PronunciationResult, type WordScore } from "@/lib/deepgram-stt";
 import { StreamingAudioPlayer } from "@/lib/audio-player";
 import { SessionRecorder } from "@/lib/session-recorder";
 import { getSupabase } from "@/lib/supabase";
@@ -106,7 +106,6 @@ function Bar({
 
 interface AzureAvg {
   pronunciation: number;
-  accuracy: number;
   wpm: number;
   score: number;
   count: number;
@@ -136,8 +135,7 @@ function AzurePanel({ data }: { data: AzureAvg | null }) {
           <div style={{ fontSize: 10, color: "#4b5563", marginBottom: 8 }}>
             Score acoustique · {data.count} tour{data.count > 1 ? "s" : ""}
           </div>
-          <Bar label="Prononciation" value={deflateAzure(data.pronunciation)} />
-          <Bar label="Précision" value={deflateAzure(data.accuracy)} />
+          <Bar label="Confiance" value={deflateAzure(data.pronunciation)} />
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginBottom: 3 }}>
             <span style={{ width: 80, color: "#9ca3af", flexShrink: 0 }}>Débit</span>
             <span style={{ fontWeight: 700, color: "#e5e7eb" }}>{Math.round(data.wpm)}</span>
@@ -255,8 +253,7 @@ function CefrPanel({ result }: { result: CefrResult }) {
 
 function UtteranceBadges({ p }: { p: PronunciationResult }) {
   const dims: [string, number, string][] = [
-    ["P", p.pronunciationScore, "Pronunciation"],
-    ["A", p.accuracyScore, "Accuracy"],
+    ["P", p.pronunciationScore, "Pronunciation confidence"],
     ["W", p.wpm, "Words per minute"],
   ];
   return (
@@ -289,22 +286,23 @@ function UserWords({ words }: { words: WordScore[] }) {
   if (!words.length) return null;
   return (
     <>
-      {words.map((w, i) => (
-        <span
-          key={i}
-          title={`${w.word}: ${Math.round(w.accuracyScore)}/100${
-            w.errorType !== "None" ? ` — ${w.errorType}` : ""
-          }`}
-          style={{
-            color: wordColor(w.accuracyScore),
-            marginRight: 4,
-            cursor: "help",
-            textDecoration: w.errorType !== "None" ? "underline dotted" : "none",
-          }}
-        >
-          {w.word}
-        </span>
-      ))}
+      {words.map((w, i) => {
+        const pct = Math.round(w.confidence * 100);
+        return (
+          <span
+            key={i}
+            title={`${w.word}: ${pct}% confidence`}
+            style={{
+              color: wordColor(pct),
+              marginRight: 4,
+              cursor: "help",
+              textDecoration: w.confidence < 0.7 ? "underline dotted" : "none",
+            }}
+          >
+            {w.word}
+          </span>
+        );
+      })}
     </>
   );
 }
@@ -322,7 +320,7 @@ export default function Home() {
   const [cefrResult, setCefrResult] = useState<CefrResult | null>(null);
   const [evaluating, setEvaluating] = useState(false);
 
-  const sttRef = useRef<AzureSTT | null>(null);
+  const sttRef = useRef<DeepgramSTT | null>(null);
   const playerRef = useRef<StreamingAudioPlayer | null>(null);
   const liveAvatarRef = useRef<LiveAvatarHandle | null>(null);
   const recorderRef = useRef<SessionRecorder | null>(null);
@@ -342,12 +340,10 @@ export default function Home() {
       return vals.reduce((a, b) => a + b, 0) / vals.length;
     };
     const pronunciation = avg("pronunciationScore");
-    const accuracy = avg("accuracyScore");
     const wpm = avg("wpm");
-    const score = Math.round((pronunciation + accuracy) / 2);
+    const score = Math.round(pronunciation);
     return {
       pronunciation,
-      accuracy,
       wpm,
       score,
       count: scored.length,
@@ -422,7 +418,7 @@ export default function Home() {
       });
     }
 
-    sttRef.current = new AzureSTT(language, {
+    sttRef.current = new DeepgramSTT(language, {
       onPartial: (text) => {
         if (isSpeakingRef.current) return;
         setPartialUser(text);

@@ -111,9 +111,9 @@ Fluency:
 - Occasional fillers ("uh", "well", "I think") at normal frequency are a natural part of spoken fluency and should not lower the score.
 
 ASR transcription errors — CRITICAL:
-- The transcript is produced by automatic speech recognition (Azure STT). ASR systems mishear words, especially in fast or connected speech.
-- When Azure pronunciation and accuracy scores are provided and are HIGH (≥ 85), assume the speaker's actual production was BETTER than any apparent errors in the transcript text. Treat garbled words (e.g. "tiations" from "negotiations") as ASR noise, not speaker errors.
-- When Azure scores are high (≥ 85 pronunciation, ≥ 85 accuracy), do NOT penalise apparent vocabulary or grammar errors that could plausibly be ASR mishearing.
+- The transcript is produced by automatic speech recognition (Deepgram). ASR systems mishear words, especially in fast or connected speech.
+- When a Deepgram pronunciation confidence score is provided and is HIGH (≥ 85), assume the speaker's actual production was BETTER than any apparent errors in the transcript text. Treat garbled words (e.g. "tiations" from "negotiations") as ASR noise, not speaker errors.
+- When confidence is high (≥ 85), do NOT penalise apparent vocabulary or grammar errors that could plausibly be ASR mishearing.
 Words per minute (WPM) → fluency dimension mapping (when provided):
 Fluency in speech correlates strongly with speaking rate. Use this scale to anchor the fluency dimension score:
 - WPM < 50   → fluency 1   (A0 — barely produces connected speech)
@@ -140,9 +140,8 @@ Calibration anchors for a typical conversational session:
 - Speaker handles abstract or hypothetical questions, gives developed answers with supporting details → Communication ≥ 8
 - Speaker uses domain-specific vocabulary naturally and handles complex topics without comprehension failures → Communication ≥ 8, overall level ≥ C1`;
 
-interface AzureContext {
-  pronunciation: number;
-  accuracy: number;
+interface SttContext {
+  pronunciation: number; // avg Deepgram word confidence × 100
   wpm: number;
   count: number;
 }
@@ -150,19 +149,18 @@ interface AzureContext {
 export function buildEvaluationUserMessage(
   language: "fr" | "en" | "nl-BE",
   userTurns: string[],
-  azureContext?: AzureContext,
+  sttContext?: SttContext,
 ): string {
   const langLabel =
     language === "fr" ? "French" :
     language === "nl-BE" ? "Dutch (Belgian)" :
     "English";
 
-  const azureSection = azureContext
-    ? `\nAzure acoustic data (averaged over ${azureContext.count} turn${azureContext.count > 1 ? "s" : ""} — informational only, do not override your holistic assessment):
-  Pronunciation: ${Math.round(azureContext.pronunciation)}/100
-  Accuracy:      ${Math.round(azureContext.accuracy)}/100
-  Speaking rate: ${Math.round(azureContext.wpm)} WPM
-  (Pronunciation/accuracy ≥ 85 → near-native phonological delivery; apply ASR calibration rules above.
+  const azureSection = sttContext
+    ? `\nSpeech recognition data (averaged over ${sttContext.count} turn${sttContext.count > 1 ? "s" : ""} — informational only, do not override your holistic assessment):
+  Pronunciation confidence: ${Math.round(sttContext.pronunciation)}/100  (avg Deepgram word confidence)
+  Speaking rate:            ${Math.round(sttContext.wpm)} WPM
+  (Confidence ≥ 85 → near-native phonological clarity; apply ASR calibration rules above.
    Use the WPM figure to anchor the fluency dimension score per the mapping table above.)\n`
     : "";
 
