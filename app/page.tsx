@@ -63,11 +63,12 @@ function scoreBarColor(score: number): string {
 
 /**
  * Azure free-speech mode clusters scores in the 75-95 range regardless of CEFR level.
- * This power-law curve spreads the upper range: 90→86, 85→79, 80→72, 75→65.
+ * Linear calibration: displayed = 1.4 × raw − 40
+ * Hits the reference table exactly: 95→93, 90→86, 85→79, 80→72, 75→65, 100→100.
  * Applied for display only — raw scores are still passed to Claude as acoustic context.
  */
 function deflateAzure(raw: number): number {
-  return Math.round(Math.pow(raw / 100, 1.4) * 100);
+  return Math.max(0, Math.round(1.4 * raw - 40));
 }
 
 // ─── small reusable bar ───────────────────────────────────────────────────────
