@@ -91,7 +91,30 @@ B1-B2: Borderline — comprehension strong but production limited, ideas not ful
 B2: Developed answers, occasional grammar errors, good comprehension, some complex structures
 B2-C1: Natural delivery, idiomatic range, rare errors, handles abstract topics well
 C1: Near-native fluency, wide vocabulary, errors rare, full register control
-C2: Indistinguishable from educated native speaker`;
+C2: Indistinguishable from educated native speaker
+
+SPOKEN LANGUAGE CALIBRATION — read this before scoring:
+
+This is a SPEECH transcript, not a writing sample. Apply these rules:
+
+Coherence and communication:
+- Conversational chaining ("and... and... but... so...") is NORMAL spoken syntax, not a coherence deficit. Do not penalise it.
+- Coherence in speech means the listener can follow the ideas — not that formal discourse markers (firstly / however / in conclusion) are used.
+- Self-corrections, restarts, and incomplete clauses are normal in spontaneous speech and should not lower the score unless they severely impede understanding.
+- A speaker who answers every question relevantly and develops ideas across multiple sentences is coherent even without academic connectives.
+
+Vocabulary:
+- Lexical approximations ("smoothing" for "soothing", "radical" for "dramatic") are expected at B2 and below. They indicate vocabulary range without full precision — score them as B2 vocabulary, not as a major deficit.
+- Only drop the vocabulary score significantly if the speaker frequently fails to find words or falls back to L1.
+
+Fluency:
+- The transcript may contain run-on words (ASR artefact). Evaluate the speech rhythmically based on the Azure pronunciation scores context, not just the transcript text.
+- Occasional fillers ("uh", "well", "I think") at normal frequency are a natural part of spoken fluency and should not lower the score.
+
+Calibration anchors for a typical conversational session:
+- Speaker answers all questions relevantly using simple compound sentences → Communication ≥ 6
+- Speaker sustains topic, develops ideas beyond one clause, uses some time/causal connectives → Communication ≥ 7
+- Speaker handles abstract or hypothetical questions, gives developed answers with supporting details → Communication ≥ 8`;
 
 export function buildEvaluationUserMessage(
   language: "fr" | "en" | "nl-BE",
