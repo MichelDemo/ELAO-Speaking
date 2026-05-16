@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { AzureSTT, type PronunciationResult, type WordScore } from "@/lib/azure-stt";
 import { StreamingAudioPlayer } from "@/lib/audio-player";
 import { SessionRecorder } from "@/lib/session-recorder";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import type { LiveAvatarHandle } from "@/components/LiveAvatar";
 
 const Avatar = dynamic(
@@ -383,18 +383,18 @@ export default function Home() {
       const ext = audioBlob.type.includes("ogg") ? "ogg" : "webm";
       const sessionId = crypto.randomUUID();
       const path = `${language}/${new Date().toISOString().slice(0, 10)}/${sessionId}.${ext}`;
-      const { error } = await supabase.storage
+      const { error } = await getSupabase().storage
         .from("recordings")
         .upload(path, audioBlob, { contentType: audioBlob.type });
       if (!error) {
-        const { data } = supabase.storage.from("recordings").getPublicUrl(path);
+        const { data } = getSupabase().storage.from("recordings").getPublicUrl(path);
         audioUrl = data.publicUrl;
       } else {
         console.error("Audio upload error:", error.message);
       }
     }
 
-    const { error } = await supabase.from("sessions").insert({
+    const { error } = await getSupabase().from("sessions").insert({
       language,
       duration_seconds: elapsed,
       cefr_level: result?.level ?? null,
