@@ -6,6 +6,12 @@
  *
  * Replaces lib/azure-stt.ts for speech recognition.
  * Azure TTS (avatar speaking voice) is unaffected — it runs server-side.
+ *
+ * Non-interruption design:
+ *   Deepgram emits is_final=true on sentence boundaries (speaker may still be talking).
+ *   speech_final=true means Deepgram detected ≥500 ms of silence — the speaker has
+ *   genuinely stopped. We accumulate is_final segments and only call onFinal when
+ *   speech_final fires, so the avatar never cuts the speaker off mid-sentence.
  */
 
 export interface WordScore {
@@ -46,6 +52,10 @@ export class DeepgramSTT {
   private cb: SttCallbacks;
   private language: "fr" | "en" | "nl-BE";
 
+  // Accumulated across is_final segments until speech_final fires
+  private pendingTranscript = "";
+  private pendingWords: DgWord[] = [];
+
   constructor(language: "fr" | "en" | "nl-BE", callbacks: SttCallbacks) {
     this.language = language;
     this.cb = callbacks;
@@ -64,13 +74,17 @@ export class DeepgramSTT {
 
     const url =
       `wss://api.deepgram.com/v1/listen` +
-      `?model=nova-2` +
+      `?model=nova-3` +
       `&language=${lang}` +
       `&interim_results=true` +
       `&punctuate=true` +
       `&smart_format=true` +
       `&encoding=linear16` +
-      `&sample_rate=16000`;
+      `&sample_rate=16000` +
+      // 500 ms of silence triggers speech_final — prevents interrupting mid-sentence.
+      // Deepgram still emits is_final on sentence boundaries; we accumulate those
+      // and only call onFinal once speech_final fires (speaker truly paused).
+      `&endpointing=500`;
 
     // Deepgram's supported browser auth: API key as WebSocket subprotocol
     this.ws = new WebSocket(url, ["token", key]);
@@ -110,34 +124,52 @@ export class DeepgramSTT {
       const transcript = alt.transcript as string;
 
       if (data.is_final) {
+        // Accumulate this finalized segment
+        this.pendingTranscript +=
+          (this.pendingTranscript ? " " : "") + transcript;
         const words: DgWord[] = alt.words ?? [];
+        this.pendingWords.push(...words);
 
-        // Average word confidence → pronunciation quality score
-        const avgConf =
-          words.length > 0
-            ? words.reduce((sum, w) => sum + (w.confidence ?? 0), 0) / words.length
-            : (alt.confidence as number ?? 0);
+        if (data.speech_final) {
+          // Silence threshold reached — speaker has stopped. Fire onFinal with
+          // the full accumulated utterance and reset accumulation buffers.
+          const fullTranscript = this.pendingTranscript;
+          const allWords = this.pendingWords;
+          this.pendingTranscript = "";
+          this.pendingWords = [];
 
-        // WPM from word timestamps (ignore very short segments — likely noise)
-        let wpm = 0;
-        if (words.length >= 2) {
-          const duration = words[words.length - 1].end - words[0].start;
-          if (duration >= 0.5) {
-            wpm = Math.round((words.length / duration) * 60);
+          // Average word confidence → pronunciation quality score
+          const avgConf =
+            allWords.length > 0
+              ? allWords.reduce((sum, w) => sum + (w.confidence ?? 0), 0) / allWords.length
+              : (alt.confidence as number ?? 0);
+
+          // WPM from first-word start to last-word end across the full utterance
+          let wpm = 0;
+          if (allWords.length >= 2) {
+            const duration = allWords[allWords.length - 1].end - allWords[0].start;
+            if (duration >= 0.5) {
+              wpm = Math.round((allWords.length / duration) * 60);
+            }
           }
-        }
 
-        this.cb.onFinal?.(transcript, {
-          text: transcript,
-          pronunciationScore: Math.round(avgConf * 100),
-          wpm,
-          words: words.map((w) => ({
-            word: w.punctuated_word ?? w.word,
-            confidence: w.confidence ?? 0,
-          })),
-        });
+          this.cb.onFinal?.(fullTranscript, {
+            text: fullTranscript,
+            pronunciationScore: Math.round(avgConf * 100),
+            wpm,
+            words: allWords.map((w) => ({
+              word: w.punctuated_word ?? w.word,
+              confidence: w.confidence ?? 0,
+            })),
+          });
+        }
+        // else: is_final but NOT speech_final — keep accumulating
       } else {
-        this.cb.onPartial?.(transcript);
+        // Partial result: show accumulated confirmed text + live partial
+        const display = this.pendingTranscript
+          ? this.pendingTranscript + " " + transcript
+          : transcript;
+        this.cb.onPartial?.(display);
       }
     } catch {
       // Ignore malformed messages (e.g. keepalives)
@@ -188,5 +220,9 @@ export class DeepgramSTT {
     this.audioContext = null;
     this.mediaStream?.getTracks().forEach((t) => t.stop());
     this.mediaStream = null;
+
+    // Reset accumulation state
+    this.pendingTranscript = "";
+    this.pendingWords = [];
   }
 }
