@@ -116,14 +116,22 @@ ASR transcription errors — CRITICAL:
 - When Azure scores are high (≥ 85 pronunciation, ≥ 85 accuracy), do NOT penalise apparent vocabulary or grammar errors that could plausibly be ASR mishearing.
 Words per minute (WPM) → fluency dimension mapping (when provided):
 Fluency in speech correlates strongly with speaking rate. Use this scale to anchor the fluency dimension score:
-- WPM < 80   → fluency 3-4  (very slow, laboured — A1/A2)
-- WPM 80-100 → fluency 5    (noticeably slow, frequent pauses — A2/B1)
-- WPM 101-120 → fluency 6   (below natural pace, some hesitation — B1)
-- WPM 121-140 → fluency 7   (approaching natural — B1/B2)
-- WPM 141-160 → fluency 8   (natural conversational pace — B2/C1)
-- WPM 161-180 → fluency 9   (fast and smooth, near-native — C1/C2)
-- WPM > 180  → fluency 9-10 (very fast, fully native-like — C2)
-Native conversational English: 130-180 WPM. French/Dutch tend to be faster.
+- WPM < 50   → fluency 1   (A0 — barely produces connected speech)
+- WPM 50-59  → fluency 2   (A0/A1 — heavily laboured)
+- WPM 60-69  → fluency 2-3 (A0/A1 — very slow, long pauses)
+- WPM 70-79  → fluency 3   (A1 — slow, frequent stops)
+- WPM 80-89  → fluency 4   (A1/A2 — noticeably slow)
+- WPM 90-99  → fluency 5   (A2 — below natural pace)
+- WPM 100-109 → fluency 5-6 (A2/B1 — some hesitation)
+- WPM 110-119 → fluency 6  (B1 — approaching natural)
+- WPM 120-129 → fluency 7  (B1/B2 — mostly natural, occasional pause)
+- WPM 130-139 → fluency 7-8 (B2 — natural conversational pace)
+- WPM 140-149 → fluency 8  (B2/C1 — smooth delivery)
+- WPM 150-159 → fluency 8-9 (C1 — effortless, near-native)
+- WPM 160-169 → fluency 9-10 (C1/C2 — fast and fluid)
+- WPM ≥ 170  → fluency 10  (C2 — fully native-like rate)
+Hard boundaries: WPM < 80 = A1 or below (fluency ≤ 3); WPM > 160 = C2 (fluency ≥ 10).
+Native conversational English: 130-170 WPM. French/Dutch tend to be slightly faster.
 WPM is a strong anchor but not the only signal — also consider pause patterns and self-correction frequency evident from the transcript.
 
 Calibration anchors for a typical conversational session:
