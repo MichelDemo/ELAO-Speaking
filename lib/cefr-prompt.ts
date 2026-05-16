@@ -108,26 +108,55 @@ Vocabulary:
 - Only drop the vocabulary score significantly if the speaker frequently fails to find words or falls back to L1.
 
 Fluency:
-- The transcript may contain run-on words (ASR artefact). Evaluate the speech rhythmically based on the Azure pronunciation scores context, not just the transcript text.
 - Occasional fillers ("uh", "well", "I think") at normal frequency are a natural part of spoken fluency and should not lower the score.
+
+ASR transcription errors — CRITICAL:
+- The transcript is produced by automatic speech recognition (Azure STT). ASR systems mishear words, especially in fast or connected speech.
+- When Azure pronunciation and accuracy scores are provided and are HIGH (≥ 85), assume the speaker's actual production was BETTER than any apparent errors in the transcript text. Treat garbled words (e.g. "tiations" from "negotiations") as ASR noise, not speaker errors.
+- When Azure scores are high (≥ 85 pronunciation, ≥ 85 accuracy), do NOT penalise apparent vocabulary or grammar errors that could plausibly be ASR mishearing.
+- High Azure fluency scores (≥ 85) indicate C1-level phonological delivery. Treat them as a strong signal for the fluency dimension.
+
+Azure acoustic score → fluency dimension mapping (when scores provided):
+- Azure fluency 60-74 → spoken fluency score 5-6
+- Azure fluency 75-84 → spoken fluency score 7
+- Azure fluency 85-89 → spoken fluency score 8
+- Azure fluency 90-94 → spoken fluency score 8-9
+- Azure fluency ≥ 95  → spoken fluency score 9-10
 
 Calibration anchors for a typical conversational session:
 - Speaker answers all questions relevantly using simple compound sentences → Communication ≥ 6
 - Speaker sustains topic, develops ideas beyond one clause, uses some time/causal connectives → Communication ≥ 7
-- Speaker handles abstract or hypothetical questions, gives developed answers with supporting details → Communication ≥ 8`;
+- Speaker handles abstract or hypothetical questions, gives developed answers with supporting details → Communication ≥ 8
+- Speaker uses domain-specific vocabulary naturally and handles complex topics without comprehension failures → Communication ≥ 8, overall level ≥ C1`;
+
+interface AzureContext {
+  pronunciation: number;
+  accuracy: number;
+  fluency: number;
+  count: number;
+}
 
 export function buildEvaluationUserMessage(
   language: "fr" | "en" | "nl-BE",
   userTurns: string[],
+  azureContext?: AzureContext,
 ): string {
   const langLabel =
     language === "fr" ? "French" :
     language === "nl-BE" ? "Dutch (Belgian)" :
     "English";
 
+  const azureSection = azureContext
+    ? `\nAzure acoustic scores (averaged over ${azureContext.count} turn${azureContext.count > 1 ? "s" : ""} — informational only, do not override your holistic assessment):
+  Pronunciation: ${Math.round(azureContext.pronunciation)}/100
+  Accuracy:      ${Math.round(azureContext.accuracy)}/100
+  Fluency:       ${Math.round(azureContext.fluency)}/100
+  (Scores ≥ 85 indicate near-native phonological delivery — apply the ASR calibration rules above.)\n`
+    : "";
+
   return `Language spoken: ${langLabel}
 Number of turns: ${userTurns.length}
-
+${azureSection}
 Interviewee's turns (in order):
 
 ${userTurns.map((t, i) => `[Turn ${i + 1}] ${t}`).join("\n")}

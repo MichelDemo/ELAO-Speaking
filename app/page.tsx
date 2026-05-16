@@ -519,7 +519,7 @@ export default function Home() {
     const res = await fetch("/api/evaluate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ language, userTurns }),
+      body: JSON.stringify({ language, userTurns, azureContext: azureAvg }),
     });
     const data = await res.json();
     setCefrResult(data);

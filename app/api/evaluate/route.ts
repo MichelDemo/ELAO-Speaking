@@ -8,13 +8,21 @@ import type { ConvLang } from "@/lib/conversation-prompts";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+interface AzureContext {
+  pronunciation: number;
+  accuracy: number;
+  fluency: number;
+  count: number;
+}
+
 interface EvalRequest {
   language: ConvLang;
   userTurns: string[];
+  azureContext?: AzureContext | null;
 }
 
 export async function POST(req: Request) {
-  const { language, userTurns } = (await req.json()) as EvalRequest;
+  const { language, userTurns, azureContext } = (await req.json()) as EvalRequest;
 
   if (!userTurns.length) {
     return NextResponse.json(
@@ -29,7 +37,7 @@ export async function POST(req: Request) {
       max_tokens: 1500,
       system: CEFR_SYSTEM_PROMPT,
       messages: [
-        { role: "user", content: buildEvaluationUserMessage(language, userTurns) },
+        { role: "user", content: buildEvaluationUserMessage(language, userTurns, azureContext ?? undefined) },
       ],
     });
 
