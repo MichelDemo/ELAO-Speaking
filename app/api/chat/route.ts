@@ -47,7 +47,7 @@ async function startTTS(
         "Content-Type": "application/ssml+xml",
         "X-Microsoft-OutputFormat": "raw-24khz-16bit-mono-pcm",
       },
-      body: `<speak version="1.0" xml:lang="${lang}"><voice name="${voice}">${escapeXml(text)}</voice></speak>`,
+      body: `<speak version="1.0" xml:lang="${lang}"><voice name="${voice}"><prosody rate="-10%">${escapeXml(text)}</prosody></voice></speak>`,
     }
   );
 
