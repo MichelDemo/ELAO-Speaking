@@ -106,7 +106,7 @@ function Bar({
 interface AzureAvg {
   pronunciation: number;
   accuracy: number;
-  fluency: number;
+  wpm: number;
   score: number;
   count: number;
 }
@@ -137,7 +137,11 @@ function AzurePanel({ data }: { data: AzureAvg | null }) {
           </div>
           <Bar label="Prononciation" value={deflateAzure(data.pronunciation)} />
           <Bar label="Précision" value={deflateAzure(data.accuracy)} />
-          <Bar label="Fluidité" value={deflateAzure(data.fluency)} />
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginBottom: 3 }}>
+            <span style={{ width: 80, color: "#9ca3af", flexShrink: 0 }}>Débit</span>
+            <span style={{ fontWeight: 700, color: "#e5e7eb" }}>{Math.round(data.wpm)}</span>
+            <span style={{ color: "#4b5563", fontSize: 10 }}>mots/min</span>
+          </div>
           <div style={{ fontSize: 9, color: "#374151", marginTop: 4 }}>
             Mesure acoustique calibrée — pas de niveau CEFR
           </div>
@@ -252,7 +256,7 @@ function UtteranceBadges({ p }: { p: PronunciationResult }) {
   const dims: [string, number, string][] = [
     ["P", p.pronunciationScore, "Pronunciation"],
     ["A", p.accuracyScore, "Accuracy"],
-    ["F", p.fluencyScore, "Fluency"],
+    ["W", p.wpm, "Words per minute"],
   ];
   return (
     <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
@@ -338,12 +342,12 @@ export default function Home() {
     };
     const pronunciation = avg("pronunciationScore");
     const accuracy = avg("accuracyScore");
-    const fluency = avg("fluencyScore");
-    const score = Math.round((pronunciation + accuracy + fluency) / 3);
+    const wpm = avg("wpm");
+    const score = Math.round((pronunciation + accuracy) / 2);
     return {
       pronunciation,
       accuracy,
-      fluency,
+      wpm,
       score,
       count: scored.length,
     };

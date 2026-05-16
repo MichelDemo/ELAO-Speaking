@@ -17,10 +17,8 @@ export interface PronunciationResult {
   pronunciationScore: number;
   /** Phoneme-level accuracy 0-100 */
   accuracyScore: number;
-  /** Speech rate / naturalness 0-100 */
-  fluencyScore: number;
-  /** How many expected words were produced 0-100 */
-  completenessScore: number;
+  /** Words per minute — calculated from Azure result duration */
+  wpm: number;
   words: WordScore[];
 }
 
@@ -82,7 +80,10 @@ export class AzureSTT {
       this.cb.onPartial?.(e.result.text);
     };
 
-    recognizer.recognized = (_: unknown, e: { result: { reason: number; text: string } }) => {
+    recognizer.recognized = (
+      _: unknown,
+      e: { result: { reason: number; text: string; duration: number } }
+    ) => {
       if (
         e.result.reason === sdk.ResultReason.RecognizedSpeech &&
         e.result.text?.trim()
@@ -104,12 +105,18 @@ export class AzureSTT {
           }
         );
 
+        // duration is in 100-nanosecond ticks → convert to seconds
+        const durationSec = (e.result.duration ?? 0) / 10_000_000;
+        const wordCount = e.result.text.trim().split(/\s+/).filter(Boolean).length;
+        const wpm = durationSec > 0.5
+          ? Math.round((wordCount / durationSec) * 60)
+          : 0; // ignore sub-half-second segments (likely noise)
+
         this.cb.onFinal?.(e.result.text, {
           text: e.result.text,
           pronunciationScore: pronResult.pronunciationScore ?? 0,
           accuracyScore: pronResult.accuracyScore ?? 0,
-          fluencyScore: pronResult.fluencyScore ?? 0,
-          completenessScore: pronResult.completenessScore ?? 0,
+          wpm,
           words,
         });
       }

@@ -114,14 +114,17 @@ ASR transcription errors — CRITICAL:
 - The transcript is produced by automatic speech recognition (Azure STT). ASR systems mishear words, especially in fast or connected speech.
 - When Azure pronunciation and accuracy scores are provided and are HIGH (≥ 85), assume the speaker's actual production was BETTER than any apparent errors in the transcript text. Treat garbled words (e.g. "tiations" from "negotiations") as ASR noise, not speaker errors.
 - When Azure scores are high (≥ 85 pronunciation, ≥ 85 accuracy), do NOT penalise apparent vocabulary or grammar errors that could plausibly be ASR mishearing.
-- High Azure fluency scores (≥ 85) indicate C1-level phonological delivery. Treat them as a strong signal for the fluency dimension.
-
-Azure acoustic score → fluency dimension mapping (when scores provided):
-- Azure fluency 60-74 → spoken fluency score 5-6
-- Azure fluency 75-84 → spoken fluency score 7
-- Azure fluency 85-89 → spoken fluency score 8
-- Azure fluency 90-94 → spoken fluency score 8-9
-- Azure fluency ≥ 95  → spoken fluency score 9-10
+Words per minute (WPM) → fluency dimension mapping (when provided):
+Fluency in speech correlates strongly with speaking rate. Use this scale to anchor the fluency dimension score:
+- WPM < 80   → fluency 3-4  (very slow, laboured — A1/A2)
+- WPM 80-100 → fluency 5    (noticeably slow, frequent pauses — A2/B1)
+- WPM 101-120 → fluency 6   (below natural pace, some hesitation — B1)
+- WPM 121-140 → fluency 7   (approaching natural — B1/B2)
+- WPM 141-160 → fluency 8   (natural conversational pace — B2/C1)
+- WPM 161-180 → fluency 9   (fast and smooth, near-native — C1/C2)
+- WPM > 180  → fluency 9-10 (very fast, fully native-like — C2)
+Native conversational English: 130-180 WPM. French/Dutch tend to be faster.
+WPM is a strong anchor but not the only signal — also consider pause patterns and self-correction frequency evident from the transcript.
 
 Calibration anchors for a typical conversational session:
 - Speaker answers all questions relevantly using simple compound sentences → Communication ≥ 6
@@ -132,7 +135,7 @@ Calibration anchors for a typical conversational session:
 interface AzureContext {
   pronunciation: number;
   accuracy: number;
-  fluency: number;
+  wpm: number;
   count: number;
 }
 
@@ -147,11 +150,12 @@ export function buildEvaluationUserMessage(
     "English";
 
   const azureSection = azureContext
-    ? `\nAzure acoustic scores (averaged over ${azureContext.count} turn${azureContext.count > 1 ? "s" : ""} — informational only, do not override your holistic assessment):
+    ? `\nAzure acoustic data (averaged over ${azureContext.count} turn${azureContext.count > 1 ? "s" : ""} — informational only, do not override your holistic assessment):
   Pronunciation: ${Math.round(azureContext.pronunciation)}/100
   Accuracy:      ${Math.round(azureContext.accuracy)}/100
-  Fluency:       ${Math.round(azureContext.fluency)}/100
-  (Scores ≥ 85 indicate near-native phonological delivery — apply the ASR calibration rules above.)\n`
+  Speaking rate: ${Math.round(azureContext.wpm)} WPM
+  (Pronunciation/accuracy ≥ 85 → near-native phonological delivery; apply ASR calibration rules above.
+   Use the WPM figure to anchor the fluency dimension score per the mapping table above.)\n`
     : "";
 
   return `Language spoken: ${langLabel}

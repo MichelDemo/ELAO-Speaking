@@ -11,7 +11,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 interface AzureContext {
   pronunciation: number;
   accuracy: number;
-  fluency: number;
+  wpm: number;
   count: number;
 }
 
