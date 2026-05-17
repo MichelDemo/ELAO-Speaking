@@ -35,9 +35,7 @@ interface CefrResult {
   confidence: "high" | "medium" | "low";
   dimensions: {
     fluency: number | null;
-    vocabulary: number | null;
-    grammar: number | null;
-    comprehension: number | null;
+    vocabulary_grammar: number | null;
     communication: number | null;
   };
   strengths: string[];
@@ -158,8 +156,25 @@ const CONFIDENCE_COLOR: Record<string, string> = {
   low: "#fb923c",
 };
 
-function CefrPanel({ result }: { result: CefrResult }) {
-  const dims = Object.entries(result.dimensions) as [string, number | null][];
+function CefrPanel({ result, azureAvg }: { result: CefrResult; azureAvg: AzureAvg | null }) {
+  // All 4 components on a 0-10 scale for uniform bar display
+  const pronScore  = azureAvg  ? deflateAzure(azureAvg.pronunciation) / 10 : null;
+  const fluency    = result.dimensions.fluency;
+  const vocabGram  = result.dimensions.vocabulary_grammar;
+  const comm       = result.dimensions.communication;
+
+  // Composite global score: equal weight across all 4 components (0-100)
+  const components = [pronScore, fluency, vocabGram, comm].filter((v): v is number => v !== null);
+  const compositeScore = components.length
+    ? Math.round(components.reduce((a, b) => a + b, 0) / components.length * 10)
+    : result.score_percent;
+
+  const dim4: [string, number | null][] = [
+    ["Pronunciation", pronScore],
+    ["Fluency",       fluency],
+    ["Vocab & Gram.", vocabGram],
+    ["Communication", comm],
+  ];
 
   return (
     <div
@@ -177,7 +192,7 @@ function CefrPanel({ result }: { result: CefrResult }) {
           </div>
           <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1.1 }}>{result.level}</div>
           <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>
-            Score {result.score_percent}/100
+            Score {compositeScore}/100
           </div>
         </div>
         <span
@@ -195,14 +210,14 @@ function CefrPanel({ result }: { result: CefrResult }) {
         </span>
       </div>
 
-      {/* Dimension bars (0-10) */}
+      {/* 4 equal-weight dimension bars (all 0-10) */}
       <div style={{ marginBottom: 8 }}>
-        {dims.map(([key, val]) =>
+        {dim4.map(([label, val]) =>
           val !== null ? (
-            <Bar key={key} label={key} value={val} max={10} />
+            <Bar key={label} label={label} value={val} max={10} />
           ) : (
-            <div key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginBottom: 3 }}>
-              <span style={{ width: 80, color: "#9ca3af", flexShrink: 0 }}>{key}</span>
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginBottom: 3 }}>
+              <span style={{ width: 80, color: "#9ca3af", flexShrink: 0 }}>{label}</span>
               <span style={{ color: "#4b5563", fontSize: 10 }}>n/a</span>
             </div>
           )
@@ -663,7 +678,7 @@ export default function Home() {
               }}
             >
               <AzurePanel data={azureAvg} />
-              {cefrResult && <CefrPanel result={cefrResult} />}
+              {cefrResult && <CefrPanel result={cefrResult} azureAvg={azureAvg} />}
             </div>
           </div>
 

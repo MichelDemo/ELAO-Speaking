@@ -21,11 +21,9 @@ OUTPUT SCHEMA:
   "score_percent": number,       // integer 0-100 mapped to CEFR band (see scale below)
   "confidence": "high" | "medium" | "low",  // low if transcript < ~300 words
   "dimensions": {
-    "fluency": number | null,       // 0-10
-    "vocabulary": number | null,    // 0-10
-    "grammar": number | null,       // 0-10
-    "comprehension": number | null, // 0-10
-    "communication": number | null  // 0-10
+    "fluency": number | null,            // 0-10
+    "vocabulary_grammar": number | null, // 0-10  (vocabulary range + grammatical accuracy combined)
+    "communication": number | null       // 0-10  (message delivery, coherence, and comprehension)
   },
   "strengths": [string],         // 3-5 specific observations from the transcript
   "areas_for_improvement": [string], // 3-5 specific observations with examples where possible
@@ -57,33 +55,19 @@ Fluency (naturalness of delivery):
 8-9: Natural, effortless delivery with minor disfluencies
 10: Completely natural, indistinguishable from a proficient native speaker
 
-Vocabulary (range and precision):
-1-3: Very limited, basic words only, frequent gaps
-4-5: Functional vocabulary, relies on approximations
-6-7: Adequate range, occasional imprecision or searching
-8-9: Rich and varied, uses nuanced or idiomatic expressions
-10: Exceptional range, precise and idiomatic throughout
+Vocabulary & Grammar (range, precision, and grammatical accuracy — score the average):
+1-3: Very limited vocabulary, basic words only; pervasive grammar errors, meaning often unclear
+4-5: Functional vocabulary, relies on approximations; frequent errors in tense/articles/agreement
+6-7: Adequate range, occasional imprecision; errors present but mostly do not impede meaning
+8-9: Rich and varied vocabulary, nuanced expressions; mostly accurate, errors rare and minor
+10: Exceptional range, precise and idiomatic; near-flawless accuracy with full structural range
 
-Grammar (accuracy and complexity):
-1-3: Pervasive errors, basic structures only, meaning often unclear
-4-5: Frequent errors in tense/articles/agreement, simple clauses
-6-7: Errors present but mostly do not impede meaning, some complex structures
-8-9: Mostly accurate, errors rare and minor, good structural variety
-10: Near-flawless accuracy with full structural range
-
-Comprehension (understanding of questions and context):
-1-3: Frequently misunderstands or needs repetition
-4-5: Understands simple/direct questions, struggles with complex ones
-6-7: Understands most questions, occasional difficulty with abstract or nuanced ones
-8-9: Follows all questions easily including complex, multi-part, or abstract ones
-10: Perfect comprehension, including humor, irony, and cultural references
-
-Communication (overall message delivery and coherence):
-1-3: Ideas barely conveyed, frequent breakdown
-4-5: Core message gets through but often incomplete or unclear
-6-7: Communicates adequately, some ideas underdeveloped
-8-9: Communicates effectively and coherently, ideas well-developed
-10: Exceptional communicator — compelling, structured, persuasive
+Communication (message delivery, coherence, and comprehension of questions):
+1-3: Ideas barely conveyed; frequently misunderstands or needs repetition
+4-5: Core message gets through but often unclear; understands simple questions, struggles with complex ones
+6-7: Communicates adequately; understands most questions, occasional difficulty with abstract ones
+8-9: Communicates effectively and coherently; follows all questions easily including complex ones
+10: Exceptional communicator — compelling, structured, persuasive; perfect comprehension
 
 KEY SIGNALS BY LEVEL:
 A2: Very simple sentences, mainly present tense, basic vocabulary, frequent gaps.
@@ -143,15 +127,15 @@ WPM is a strong anchor but not the only signal — also consider pause patterns 
 Calibration anchors — lower levels (ceiling applies only when pattern is consistent across most turns):
 - Speaker relies exclusively on present tense with no complex structures attempted → max A2
 - Answers are consistently ≤ 1 sentence with zero elaboration across all turns → max B1 communication
-- Speaker misunderstands or deflects 3+ questions → comprehension ≤ 5, overall max B1
-- Grammar errors impede meaning in more than half of utterances → max B1 grammar
-- Vocabulary gaps force the speaker to stop or switch language in most turns → max B1 vocabulary
+- Speaker misunderstands or deflects 3+ questions → communication ≤ 5, overall max B1
+- Grammar errors impede meaning in more than half of utterances → vocabulary_grammar ≤ 5
+- Vocabulary gaps force the speaker to stop or switch language in most turns → vocabulary_grammar ≤ 5
 
 Calibration anchors — upper levels (generous floor):
-- Speaker answers all questions relevantly using simple compound sentences → Communication ≥ 6
-- Speaker sustains topic, develops ideas beyond one clause, uses some time/causal connectives → Communication ≥ 7
-- Speaker handles abstract or hypothetical questions with supporting details → Communication ≥ 8
-- Speaker uses domain-specific vocabulary naturally, no comprehension failures → Communication ≥ 8, overall ≥ C1
+- Speaker answers all questions relevantly using simple compound sentences → communication ≥ 6
+- Speaker sustains topic, develops ideas beyond one clause, uses some time/causal connectives → communication ≥ 7
+- Speaker handles abstract or hypothetical questions with supporting details → communication ≥ 8
+- Speaker uses domain-specific vocabulary naturally, no comprehension failures → vocabulary_grammar ≥ 8, overall ≥ C1
 - 2+ dimensions score ≥ 7 with no major comprehension failures → overall level B2 or above; do not assign B1
 - Natural delivery, varied vocabulary, and complete comprehension with only minor slips → C1, not B2`;
 
