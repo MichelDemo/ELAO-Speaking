@@ -354,6 +354,9 @@ export default function Home() {
   const isProcessingRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const sessionSavedRef = useRef(false);
+  /** Set at 4 min — causes the next onFinal to trigger __END__ after the user's sentence. */
+  const pendingEndRef = useRef(false);
+  const endTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const historyRef = useRef<Msg[]>([]);
   historyRef.current = history;
 
@@ -386,11 +389,20 @@ export default function Home() {
     return () => clearInterval(id);
   }, [sessionStarted]);
 
-  // Auto-evaluate and close conversation at 4 min
+  // Auto-evaluate and close conversation at 4 min.
+  // Don't interrupt mid-sentence: set a flag so onFinal triggers __END__
+  // after the user finishes speaking. Safety timeout fires after 20 s in
+  // case the user is already silent.
   useEffect(() => {
     if (elapsed === 240 && !cefrResult && !evaluating) {
       runEvaluation();
-      handleUserTurn("__END__");
+      pendingEndRef.current = true;
+      endTimeoutRef.current = setTimeout(() => {
+        if (pendingEndRef.current) {
+          pendingEndRef.current = false;
+          handleUserTurn("__END__");
+        }
+      }, 20_000);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elapsed]);
@@ -458,7 +470,22 @@ export default function Home() {
         if (!text.trim() || isProcessingRef.current || isSpeakingRef.current) return;
         setPartialUser("");
         if (USE_HEYGEN) liveAvatarRef.current?.stopListening();
+
+        // Capture and clear the pending-end flag before any await so a
+        // concurrent timeout can't also fire __END__.
+        const shouldEnd = pendingEndRef.current;
+        if (shouldEnd) {
+          pendingEndRef.current = false;
+          if (endTimeoutRef.current) {
+            clearTimeout(endTimeoutRef.current);
+            endTimeoutRef.current = null;
+          }
+        }
+
         await handleUserTurn(text, pronunciation);
+
+        // Let the user finish their sentence, then close gracefully.
+        if (shouldEnd) await handleUserTurn("__END__");
       },
       onError: (e) => console.error("STT error:", e),
     });
@@ -570,6 +597,11 @@ export default function Home() {
   };
 
   const stopSession = async () => {
+    pendingEndRef.current = false;
+    if (endTimeoutRef.current) {
+      clearTimeout(endTimeoutRef.current);
+      endTimeoutRef.current = null;
+    }
     sttRef.current?.stop();
     if (!USE_HEYGEN) playerRef.current?.stop();
     const audioBlob = await recorderRef.current?.stop() ?? null;
