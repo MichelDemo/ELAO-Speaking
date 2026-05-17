@@ -6,6 +6,8 @@
 
 export interface WordScore {
   word: string;
+  /** AccuracyScore / 100  →  0–1  (matches whisper-stt.ts interface consumed by page.tsx) */
+  confidence: number;
   accuracyScore: number;
   /** "None" | "Omission" | "Insertion" | "Mispronunciation" | "UnexpectedBreak" | "MissingBreak" | "Monotone" */
   errorType: string;
@@ -22,7 +24,7 @@ export interface PronunciationResult {
   words: WordScore[];
 }
 
-export interface AzureSttCallbacks {
+export interface SttCallbacks {
   onPartial?: (text: string) => void;
   onFinal?: (text: string, pronunciation: PronunciationResult) => void;
   onError?: (err: unknown) => void;
@@ -36,14 +38,12 @@ interface RecognizerHandle {
 
 export class AzureSTT {
   private recognizer: RecognizerHandle | null = null;
-  private cb: AzureSttCallbacks;
+  private cb: SttCallbacks;
   private language: "fr" | "en" | "nl-BE";
-  private region: string;
 
-  constructor(language: "fr" | "en" | "nl-BE", callbacks: AzureSttCallbacks, region = "westeurope") {
+  constructor(language: "fr" | "en" | "nl-BE", callbacks: SttCallbacks) {
     this.language = language;
     this.cb = callbacks;
-    this.region = region;
   }
 
   async start() {
@@ -53,9 +53,9 @@ export class AzureSTT {
     // Fetch a short-lived token from our server (key never sent to browser)
     const tokenRes = await fetch("/api/speech-token");
     if (!tokenRes.ok) throw new Error("Speech token fetch failed");
-    const token = await tokenRes.text();
+    const { token, region } = await tokenRes.json();
 
-    const speechConfig = sdk.SpeechConfig.fromAuthorizationToken(token, this.region);
+    const speechConfig = sdk.SpeechConfig.fromAuthorizationToken(token, region);
     speechConfig.speechRecognitionLanguage =
       this.language === "fr" ? "fr-FR" :
       this.language === "nl-BE" ? "nl-BE" :
@@ -97,9 +97,11 @@ export class AzureSTT {
               Word: string;
               PronunciationAssessment?: { AccuracyScore?: number; ErrorType?: string };
             };
+            const accuracyScore = word.PronunciationAssessment?.AccuracyScore ?? 0;
             return {
               word: word.Word ?? "",
-              accuracyScore: word.PronunciationAssessment?.AccuracyScore ?? 0,
+              confidence: accuracyScore / 100,
+              accuracyScore,
               errorType: word.PronunciationAssessment?.ErrorType ?? "None",
             };
           }

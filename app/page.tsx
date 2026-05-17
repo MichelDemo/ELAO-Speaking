@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { WhisperSTT, type PronunciationResult, type WordScore } from "@/lib/whisper-stt";
+import { AzureSTT, type PronunciationResult, type WordScore } from "@/lib/azure-stt";
 import { StreamingAudioPlayer } from "@/lib/audio-player";
 import { SessionRecorder } from "@/lib/session-recorder";
 import { getSupabase } from "@/lib/supabase";
@@ -320,7 +320,7 @@ export default function Home() {
   const [cefrResult, setCefrResult] = useState<CefrResult | null>(null);
   const [evaluating, setEvaluating] = useState(false);
 
-  const sttRef = useRef<WhisperSTT | null>(null);
+  const sttRef = useRef<AzureSTT | null>(null);
   const playerRef = useRef<StreamingAudioPlayer | null>(null);
   const liveAvatarRef = useRef<LiveAvatarHandle | null>(null);
   const recorderRef = useRef<SessionRecorder | null>(null);
@@ -422,7 +422,7 @@ export default function Home() {
       playerRef.current.init();
     }
 
-    sttRef.current = new WhisperSTT(language, {
+    sttRef.current = new AzureSTT(language, {
       onPartial: (text) => {
         if (isSpeakingRef.current) return;
         setPartialUser(text);
@@ -442,7 +442,7 @@ export default function Home() {
     try {
       await sttRef.current.start();
     } catch (e) {
-      console.error("Deepgram STT failed to connect:", e);
+      console.error("Azure STT failed to start:", e);
       // STT is down but TTS still works — avatar will speak, mic input is disabled
     }
 

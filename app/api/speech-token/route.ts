@@ -23,11 +23,8 @@ export async function GET() {
   }
 
   const token = await res.text();
-  return new Response(token, {
-    headers: {
-      "Content-Type": "text/plain",
-      // Tokens expire in 10 min; tell the browser not to cache beyond 9 min
-      "Cache-Control": "max-age=540",
-    },
-  });
+  return Response.json(
+    { token, region },
+    { headers: { "Cache-Control": "max-age=540" } }
+  );
 }
