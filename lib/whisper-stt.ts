@@ -23,11 +23,12 @@ export interface PronunciationResult {
   text: string;
   /**
    * Pronunciation quality proxy (0–100).
-   * Derived from Whisper segment avg_logprob:
-   *   avg_logprob ≥ -0.2  → ~95-100 (excellent clarity)
-   *   avg_logprob ~ -0.5  → ~58     (moderate accent / some unclear words)
-   *   avg_logprob ~ -0.8  → ~25     (noticeable pronunciation issues)
-   *   avg_logprob ≤ -1.2  → 0       (very unclear)
+   * Derived from Whisper segment avg_logprob via cube-root transform on [−1, 0]:
+   *   avg_logprob ≥ −0.2  → ~93  (excellent clarity)
+   *   avg_logprob ~ −0.4  → ~84  (good non-native browser speech)
+   *   avg_logprob ~ −0.6  → ~74  (typical browser mic, correct words)
+   *   avg_logprob ~ −0.8  → ~58  (noticeable accent / noise)
+   *   avg_logprob ≤ −1.0  → 0    (very unclear)
    */
   pronunciationScore: number;
   /** Words per minute derived from Whisper word-level timestamps. */
@@ -222,15 +223,17 @@ export class WhisperSTT {
           : 0;
       if (avgNoSpeech > NO_SPEECH_CUTOFF) return;
 
-      // Pronunciation score from avg_logprob
-      // avg_logprob = 0.0 → 100 (perfect), -1.2 → 0 (very unclear)
+      // Pronunciation score from avg_logprob.
+      // Whisper avg_logprob for clear browser-mic speech is typically −0.3 to −0.6.
+      // A linear map [−1.2, 0] → [0, 100] would rate correct words at ~50 %.
+      // Cube-root transform spreads the upper range so that typical good speech
+      // (−0.4 to −0.6) maps to 74–84 % (above the ≥ 70 threshold used by Claude).
       const avgLogprob =
         data.segments && data.segments.length > 0
           ? data.segments.reduce((s, seg) => s + seg.avg_logprob, 0) / data.segments.length
           : -0.5;
-      const pronunciationScore = Math.round(
-        Math.max(0, Math.min(100, ((avgLogprob + 1.2) / 1.2) * 100))
-      );
+      const normalized = Math.max(0, Math.min(1, (avgLogprob + 1.0) / 1.0));
+      const pronunciationScore = Math.round(Math.pow(normalized, 1 / 3) * 100);
 
       // WPM from word timestamps
       const words = data.words ?? [];
@@ -240,8 +243,9 @@ export class WhisperSTT {
         if (duration >= 0.5) wpm = Math.round((words.length / duration) * 60);
       }
 
-      // Pseudo-confidence per word (same scalar — no per-word logprob from API)
-      const wordConf = Math.max(0, Math.min(1, 1 + avgLogprob));
+      // Pseudo-confidence per word — Whisper has no per-word logprob, so we
+      // apply the same cube-root-scaled segment score to every word.
+      const wordConf = Math.pow(normalized, 1 / 3);
 
       this.cb.onFinal?.(text, {
         text,

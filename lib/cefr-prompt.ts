@@ -171,7 +171,7 @@ export function buildEvaluationUserMessage(
 
   const azureSection = sttContext
     ? `\nSpeech recognition data (averaged over ${sttContext.count} turn${sttContext.count > 1 ? "s" : ""} — informational only, do not override your holistic assessment):
-  Pronunciation confidence: ${Math.round(sttContext.pronunciation)}/100  (avg Deepgram word confidence)
+  Pronunciation confidence: ${Math.round(sttContext.pronunciation)}/100  (avg Whisper segment score — cube-root scaled)
   Speaking rate:            ${Math.round(sttContext.wpm)} WPM
   (Score ≥ 70 → clear audio, apply ASR calibration rules above; score < 50 → noisy/unclear.
    Use the WPM figure to anchor the fluency dimension score per the mapping table above.)\n`
