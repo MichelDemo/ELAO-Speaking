@@ -69,6 +69,17 @@ function deflateAzure(raw: number): number {
   return Math.max(0, Math.round(1.4 * raw - 40));
 }
 
+/** Derive CEFR level from composite score using the same band table as the prompt. */
+function scoreToLevel(score: number): string {
+  if (score >= 91) return "C2";
+  if (score >= 77) return "C1";
+  if (score >= 61) return "B2";
+  if (score >= 45) return "B1";
+  if (score >= 29) return "A2";
+  if (score >= 12) return "A1";
+  return "A0";
+}
+
 // ─── small reusable bar ───────────────────────────────────────────────────────
 
 function Bar({
@@ -190,7 +201,7 @@ function CefrPanel({ result, azureAvg }: { result: CefrResult; azureAvg: AzureAv
           <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", fontWeight: 700, letterSpacing: 1 }}>
             ORAL ASSESSMENT
           </div>
-          <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1.1 }}>{result.level}</div>
+          <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1.1 }}>{scoreToLevel(compositeScore)}</div>
           <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>
             Score {compositeScore}/100
           </div>
