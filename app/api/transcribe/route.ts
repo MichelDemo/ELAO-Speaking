@@ -4,7 +4,9 @@ import type { ConvLang } from "@/lib/conversation-prompts";
 
 export const runtime = "nodejs";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+function getOpenAI() {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
 
 export async function POST(req: Request) {
   const fd = await req.formData();
@@ -19,7 +21,7 @@ export async function POST(req: Request) {
     language === "fr" ? "fr" : language === "nl-BE" ? "nl" : "en";
 
   try {
-    const transcription = await openai.audio.transcriptions.create({
+    const transcription = await getOpenAI().audio.transcriptions.create({
       file: audio,
       model: "whisper-1",
       language: lang,
