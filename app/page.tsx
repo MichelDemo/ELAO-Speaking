@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { DeepgramSTT, type PronunciationResult, type WordScore } from "@/lib/deepgram-stt";
+import { WhisperSTT, type PronunciationResult, type WordScore } from "@/lib/whisper-stt";
 import { StreamingAudioPlayer } from "@/lib/audio-player";
 import { SessionRecorder } from "@/lib/session-recorder";
 import { getSupabase } from "@/lib/supabase";
@@ -320,7 +320,7 @@ export default function Home() {
   const [cefrResult, setCefrResult] = useState<CefrResult | null>(null);
   const [evaluating, setEvaluating] = useState(false);
 
-  const sttRef = useRef<DeepgramSTT | null>(null);
+  const sttRef = useRef<WhisperSTT | null>(null);
   const playerRef = useRef<StreamingAudioPlayer | null>(null);
   const liveAvatarRef = useRef<LiveAvatarHandle | null>(null);
   const recorderRef = useRef<SessionRecorder | null>(null);
@@ -422,7 +422,7 @@ export default function Home() {
       playerRef.current.init();
     }
 
-    sttRef.current = new DeepgramSTT(language, {
+    sttRef.current = new WhisperSTT(language, {
       onPartial: (text) => {
         if (isSpeakingRef.current) return;
         setPartialUser(text);

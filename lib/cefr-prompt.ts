@@ -114,9 +114,10 @@ Fluency:
 - Occasional fillers ("uh", "well", "I think") at normal frequency are a natural part of spoken fluency and should not lower the score.
 
 ASR transcription errors — CRITICAL:
-- The transcript is produced by automatic speech recognition (Deepgram). ASR systems mishear words, especially in fast or connected speech.
-- When a Deepgram pronunciation confidence score is provided and is HIGH (≥ 85), assume the speaker's actual production was BETTER than any apparent errors in the transcript text. Treat garbled words (e.g. "tiations" from "negotiations") as ASR noise, not speaker errors.
-- When confidence is high (≥ 85), do NOT penalise apparent vocabulary or grammar errors that could plausibly be ASR mishearing.
+- The transcript is produced by OpenAI Whisper. Whisper is highly accurate but can mishear words in fast or heavily accented speech.
+- The pronunciation score provided is derived from Whisper's internal log-probability (avg_logprob): 100 = very clear audio, ~70 = good, ~50 = moderate accent/noise, ≤30 = unclear. It reflects acoustic clarity, not lexical correctness.
+- When the pronunciation score is HIGH (≥ 70), assume the speaker's actual production was BETTER than any apparent errors in the transcript. Treat garbled words (e.g. "tiations" from "negotiations") as ASR noise, not speaker errors.
+- When the score is high (≥ 70), do NOT penalise apparent vocabulary or grammar errors that could plausibly be Whisper mishearing.
 Words per minute (WPM) → fluency dimension mapping (when provided):
 Fluency in speech correlates strongly with speaking rate. Use this scale to anchor the fluency dimension score:
 - WPM < 50   → fluency 1   (A0 — barely produces connected speech)
@@ -172,7 +173,7 @@ export function buildEvaluationUserMessage(
     ? `\nSpeech recognition data (averaged over ${sttContext.count} turn${sttContext.count > 1 ? "s" : ""} — informational only, do not override your holistic assessment):
   Pronunciation confidence: ${Math.round(sttContext.pronunciation)}/100  (avg Deepgram word confidence)
   Speaking rate:            ${Math.round(sttContext.wpm)} WPM
-  (Confidence ≥ 85 → near-native phonological clarity; apply ASR calibration rules above.
+  (Score ≥ 70 → clear audio, apply ASR calibration rules above; score < 50 → noisy/unclear.
    Use the WPM figure to anchor the fluency dimension score per the mapping table above.)\n`
     : "";
 
