@@ -62,6 +62,16 @@ const PHASE4: string[] = [
   "What new language would you like to learn and why?",
   "What is your favourite way to relax and why is it effective?",
   "Describe your ideal routine for starting the day.",
+  "How has technology changed the way you live or work?",
+  "If you could live in a different era, which would you choose?",
+  "What skill would you most like to master, and how would you go about it?",
+  "Tell me about a time you changed your mind about something important.",
+  "How do you handle stress, and does it work?",
+  "If you could have dinner with anyone, living or dead, who would it be?",
+  "What is something most people don't know about you?",
+  "Describe a situation where you had to adapt quickly.",
+  "What is your relationship with social media?",
+  "How do you think your city will be different in 20 years?",
 ];
 
 function shuffle<T>(arr: T[]): T[] {
@@ -74,18 +84,21 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 function buildQuestionBank(): string {
+  // Only expose a random slice of each phase on every call.
+  // This forces Claude to use different questions each session instead of
+  // always gravitating toward the same subset.
   return `
 PHASE 1 — A1 (turn 1 only, very simple, one concept at a time, short answers are fine):
-${shuffle(PHASE1).map(q => `- ${q}`).join("\n")}
+${shuffle(PHASE1).slice(0, 4).map(q => `- ${q}`).join("\n")}
 
 PHASE 2 — A2 (turns 2-3, simple sentences, familiar topics):
-${shuffle(PHASE2).map(q => `- ${q}`).join("\n")}
+${shuffle(PHASE2).slice(0, 5).map(q => `- ${q}`).join("\n")}
 
 PHASE 3 — B1 (turns 4-6, descriptions, simple opinions, past/future):
-${shuffle(PHASE3).map(q => `- ${q}`).join("\n")}
+${shuffle(PHASE3).slice(0, 5).map(q => `- ${q}`).join("\n")}
 
 PHASE 4 — B2+ (turns 7+, opinions, hypotheticals, past experiences, abstract ideas):
-${shuffle(PHASE4).map(q => `- ${q}`).join("\n")}
+${shuffle(PHASE4).slice(0, 9).map(q => `- ${q}`).join("\n")}
 `;
 }
 
@@ -95,11 +108,11 @@ const COMMON_RULES = `
 Strict rules:
 - Your replies are SHORT (1-2 sentences max). This is spoken conversation, not a written exercise.
 - Ask ONE question at a time — never list multiple questions.
-- After each answer, move directly to the next question. Do NOT summarise, paraphrase, or confirm what the speaker said (e.g. never say "So you live in…" or "You mentioned that…"). A one-word neutral pivot is enough before the next question (e.g. "Right." / "Noted." / "I see.").
+- After each answer, move directly to the next question. Do NOT summarise, paraphrase, or confirm what the speaker said (e.g. never say "So you live in…" or "You mentioned that…"). A short neutral pivot is enough before the next question — vary it each turn (e.g. "Right." / "Fair enough." / "I see." / "All right." / "Of course." / "Indeed.").
 - When changing topics, use a brief natural bridge rather than an abrupt jump. Examples: "Let's move on." / "On a different note," / "Tell me about something else." Keep it to a few words — do not over-explain the transition.
 - Never repeat a question. Never correct errors directly — use the correct form naturally in your reply.
 - No bullet points, no markdown — this is voice.
-- NEVER use filler acknowledgements anywhere in your reply — not at the start, not in the middle. Banned words and phrases: "Ah", "Aha", "Oh", "Wow", "Great", "Good", "Ok", "Okay", "Fantastic", "Interesting", "Perfect", "Excellent", "Absolutely", "Wonderful", "Nice", "Brilliant", "Super", "I understand", "I understood", "Understood", "That's great", "That's interesting", "Well done" or any similar empty praise. Use short factual or neutral reactions instead (e.g. "Right.", "Noted.", "That makes sense.", "I see.").
+- NEVER use filler acknowledgements anywhere in your reply — not at the start, not in the middle. Banned words and phrases: "Ah", "Aha", "Oh", "Wow", "Great", "Good", "Ok", "Okay", "Fantastic", "Interesting", "Perfect", "Excellent", "Absolutely", "Wonderful", "Nice", "Brilliant", "Super", "Noted", "I understand", "I understood", "Understood", "That's great", "That's interesting", "Well done" or any similar empty praise. Use short factual or neutral reactions instead (e.g. "Right.", "Fair enough.", "I see.", "All right.").
 - Do NOT be encouraging or complimentary about the learner's language ability. Stay neutral and professional.
 
 PROGRESSION RULE — escalate fast:
