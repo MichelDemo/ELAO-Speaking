@@ -23,12 +23,12 @@ export interface PronunciationResult {
   text: string;
   /**
    * Pronunciation quality proxy (0–100).
-   * Derived from Whisper segment avg_logprob via cube-root transform on [−1, 0]:
-   *   avg_logprob ≥ −0.2  → ~93  (excellent clarity)
-   *   avg_logprob ~ −0.4  → ~84  (good non-native browser speech)
-   *   avg_logprob ~ −0.6  → ~74  (typical browser mic, correct words)
-   *   avg_logprob ~ −0.8  → ~58  (noticeable accent / noise)
-   *   avg_logprob ≤ −1.0  → 0    (very unclear)
+   * Derived from Whisper segment avg_logprob via x^0.1 transform on [−1, 0]:
+   *   avg_logprob ~ −0.3  → ~96  (excellent browser-mic speech)
+   *   avg_logprob ~ −0.5  → ~93  (typical clear non-native speech)
+   *   avg_logprob ~ −0.7  → ~88  (moderate accent / some noise)
+   *   avg_logprob ~ −0.9  → ~77  (poor audio — still above 70 threshold)
+   *   avg_logprob ≤ −1.0  → 0    (clamped floor)
    */
   pronunciationScore: number;
   /** Words per minute derived from Whisper word-level timestamps. */
@@ -232,8 +232,12 @@ export class WhisperSTT {
         data.segments && data.segments.length > 0
           ? data.segments.reduce((s, seg) => s + seg.avg_logprob, 0) / data.segments.length
           : -0.5;
+      // avg_logprob for clear browser-mic speech is typically −0.3 to −0.6.
+      // Exponent 0.1 (very concave) maps that range to 93–96 %, while still
+      // giving 77 %+ for genuinely poor audio — keeping everything above the
+      // ≥ 70 threshold that tells Claude to apply generous ASR calibration.
       const normalized = Math.max(0, Math.min(1, (avgLogprob + 1.0) / 1.0));
-      const pronunciationScore = Math.round(Math.pow(normalized, 1 / 3) * 100);
+      const pronunciationScore = Math.round(Math.pow(normalized, 0.1) * 100);
 
       // WPM from word timestamps
       const words = data.words ?? [];
