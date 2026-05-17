@@ -118,9 +118,11 @@ Fluency in speech correlates strongly with speaking rate. Use this scale to anch
 - WPM 130-139 → fluency 8  (B2/C1 — natural conversational pace)
 - WPM 140-149 → fluency 9  (C1/C2 — smooth, effortless delivery)
 - WPM ≥ 150  → fluency 10  (C2 — fully native-like rate)
-Hard boundaries: WPM < 80 = A1 or below (fluency ≤ 3); WPM ≥ 150 = C2 (fluency 10).
+Hard boundaries (non-negotiable):
+- WPM < 80  → fluency ≤ 3 regardless of transcript quality
+- WPM ≥ 150 → fluency 10 regardless of occasional hesitations in the transcript
 Native conversational English: 130-160 WPM. French/Dutch tend to be slightly faster.
-WPM is a strong anchor but not the only signal — also consider pause patterns and self-correction frequency evident from the transcript.
+WPM is the primary anchor for fluency. Only adjust within the 1-point band shown above when pause patterns or self-corrections are severe and frequent.
 
 Calibration anchors — lower levels (ceiling applies only when pattern is consistent across most turns):
 - Speaker relies exclusively on present tense with no complex structures attempted → max A2
