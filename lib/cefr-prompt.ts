@@ -43,9 +43,8 @@ CEFR PERCENTAGE SCALE:
 91-100: C2
 
 Place the candidate within the band based on where they sit relative to band boundaries:
-- Lower end of band → use the band's minimum %
-- Middle of band → use midpoint
-- Upper end / borderline with next band → use upper %
+- A0–B1: err conservative — borderline between two bands → use the lower band. Require consistent evidence across multiple turns before advancing.
+- B2–C2: err generous — borderline between two bands → use the higher band. Strong performance on most dimensions outweighs isolated weaknesses.
 
 DIMENSION SCORING GUIDE:
 
@@ -85,13 +84,17 @@ Communication (overall message delivery and coherence):
 10: Exceptional communicator — compelling, structured, persuasive
 
 KEY SIGNALS BY LEVEL:
-A2: Very simple sentences, present tense only, basic vocabulary, many gaps
-B1: Simple sentences, can handle familiar topics, grammar errors frequent but meaning clear
-B1-B2: Borderline — comprehension strong but production limited, ideas not fully developed
-B2: Developed answers, occasional grammar errors, good comprehension, some complex structures
-B2-C1: Natural delivery, idiomatic range, rare errors, handles abstract topics well
-C1: Near-native fluency, wide vocabulary, errors rare, full register control
-C2: Indistinguishable from educated native speaker
+A2: Very simple sentences, mainly present tense, basic vocabulary, frequent gaps.
+    Does NOT reach B1 if: grammar errors are frequent and impede meaning, or speaker cannot express ideas beyond simple statements across most turns.
+B1: Handles familiar topics; grammar errors frequent but meaning usually clear.
+    Does NOT reach B2 if: answers are consistently short and underdeveloped, abstract questions cause comprehension breakdown, or complex tenses/structures are consistently wrong.
+B1-B2: Borderline — comprehension stronger than production; ideas partially developed.
+B2: Developed, relevant answers; good comprehension; some complex structures even if imperfect.
+    REACHES B2 if: 3+ dimensions score ≥ 7, comprehension is solid, and the speaker elaborates beyond surface answers — occasional grammar slips do not block B2.
+B2-C1: Natural delivery, idiomatic range, rare errors, handles abstract topics well.
+C1: Near-native fluency, wide and precise vocabulary, errors rare and minor, full register control.
+    REACHES C1 if: delivery feels natural, vocabulary is varied and precise, comprehension is complete — 1–2 minor errors per exchange do not block C1.
+C2: Indistinguishable from an educated native speaker across all five dimensions.
 
 SPOKEN LANGUAGE CALIBRATION — read this before scoring:
 
@@ -134,11 +137,20 @@ Hard boundaries: WPM < 80 = A1 or below (fluency ≤ 3); WPM > 160 = C2 (fluency
 Native conversational English: 130-170 WPM. French/Dutch tend to be slightly faster.
 WPM is a strong anchor but not the only signal — also consider pause patterns and self-correction frequency evident from the transcript.
 
-Calibration anchors for a typical conversational session:
+Calibration anchors — lower levels (strict ceiling):
+- Speaker relies on present tense throughout with consistent tense errors → max A2 regardless of topic breadth
+- Answers are consistently ≤ 2 sentences with no elaboration across all turns → max B1 communication
+- Speaker misunderstands or deflects 2+ questions → comprehension ≤ 5, overall max B1
+- Grammar errors impede meaning in more than a third of utterances → max B1 grammar
+- Vocabulary gaps force the speaker to stop, rephrase, or switch language → max B1 vocabulary
+
+Calibration anchors — upper levels (generous floor):
 - Speaker answers all questions relevantly using simple compound sentences → Communication ≥ 6
 - Speaker sustains topic, develops ideas beyond one clause, uses some time/causal connectives → Communication ≥ 7
-- Speaker handles abstract or hypothetical questions, gives developed answers with supporting details → Communication ≥ 8
-- Speaker uses domain-specific vocabulary naturally and handles complex topics without comprehension failures → Communication ≥ 8, overall level ≥ C1`;
+- Speaker handles abstract or hypothetical questions with supporting details → Communication ≥ 8
+- Speaker uses domain-specific vocabulary naturally, no comprehension failures → Communication ≥ 8, overall ≥ C1
+- 3+ dimensions score ≥ 7 with rare errors → overall level B2 or above; do not assign B1
+- Natural delivery, varied vocabulary, and complete comprehension with only minor slips → C1, not B2`;
 
 interface SttContext {
   pronunciation: number; // avg Deepgram word confidence × 100
