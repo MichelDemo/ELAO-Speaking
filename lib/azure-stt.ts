@@ -30,6 +30,21 @@ export interface SttCallbacks {
   onError?: (err: unknown) => void;
 }
 
+/**
+ * Map Azure AccuracyScore + ErrorType to 4 discrete confidence levels.
+ * Returns a value that falls cleanly into the 4 colour buckets in wordColor():
+ *   1.00 → green   (correct    — errorType None, accuracy ≥ 80)
+ *   0.70 → yellow  (acceptable — errorType None, accuracy 65-79)
+ *   0.45 → orange  (imprecise  — Mispronunciation, or accuracy 40-64)
+ *   0.20 → red     (incorrect  — accuracy < 40 or Omission)
+ */
+function discreteWordConfidence(accuracyScore: number, errorType: string): number {
+  if (accuracyScore < 40 || errorType === "Omission") return 0.20;
+  if (errorType === "Mispronunciation" || accuracyScore < 65) return 0.45;
+  if (accuracyScore < 80) return 0.70;
+  return 1.00;
+}
+
 interface RecognizerHandle {
   startContinuousRecognitionAsync(ok: () => void, err: (e: unknown) => void): void;
   stopContinuousRecognitionAsync(ok: () => void): void;
@@ -97,22 +112,24 @@ export class AzureSTT {
               Word: string;
               PronunciationAssessment?: { AccuracyScore?: number; ErrorType?: string };
             };
-            const accuracyScore = word.PronunciationAssessment?.AccuracyScore ?? 0;
+            const accuracyScore = Math.round(word.PronunciationAssessment?.AccuracyScore ?? 100);
+            const errorType = word.PronunciationAssessment?.ErrorType ?? "None";
             return {
               word: word.Word ?? "",
-              confidence: accuracyScore / 100,
+              confidence: discreteWordConfidence(accuracyScore, errorType),
               accuracyScore,
-              errorType: word.PronunciationAssessment?.ErrorType ?? "None",
+              errorType,
             };
           }
         );
 
-        // duration is in 100-nanosecond ticks → convert to seconds
+        // WPM only for substantive turns (≥ 6 words); short answers would
+        // skew the fluency average downward.
         const durationSec = (e.result.duration ?? 0) / 10_000_000;
         const wordCount = e.result.text.trim().split(/\s+/).filter(Boolean).length;
-        const wpm = durationSec > 0.5
+        const wpm = durationSec > 0.5 && wordCount >= 6
           ? Math.round((wordCount / durationSec) * 60)
-          : 0; // ignore sub-half-second segments (likely noise)
+          : 0;
 
         this.cb.onFinal?.(e.result.text, {
           text: e.result.text,

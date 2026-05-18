@@ -314,10 +314,11 @@ function UserWords({ words }: { words: WordScore[] }) {
     <>
       {words.map((w, i) => {
         const pct = Math.round(w.confidence * 100);
+        const label = pct >= 80 ? "correct" : pct >= 60 ? "acceptable" : pct >= 35 ? "mispronounced" : "incorrect";
         return (
           <span
             key={i}
-            title={`${w.word}: ${pct}% confidence`}
+            title={`${w.word}: ${label}`}
             style={{
               color: wordColor(pct),
               marginRight: 4,
@@ -369,7 +370,12 @@ export default function Home() {
       return vals.reduce((a, b) => a + b, 0) / vals.length;
     };
     const pronunciation = avg("pronunciationScore");
-    const wpm = avg("wpm");
+    // Only average WPM over long turns (≥ 6 words); short answers return wpm=0
+    // and would drag the fluency figure below the real speaking rate.
+    const wpmTurns = scored.filter((m) => (m.pronunciation!.wpm ?? 0) > 0);
+    const wpm = wpmTurns.length > 0
+      ? wpmTurns.reduce((s, m) => s + m.pronunciation!.wpm, 0) / wpmTurns.length
+      : 0;
     const score = Math.round(pronunciation);
     return {
       pronunciation,
