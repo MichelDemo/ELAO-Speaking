@@ -12,6 +12,7 @@ interface SttContext {
   pronunciation: number;
   wpm: number;
   count: number;
+  shortTurns?: number;
 }
 
 interface EvalRequest {

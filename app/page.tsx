@@ -118,6 +118,8 @@ interface AzureAvg {
   wpm: number;
   score: number;
   count: number;
+  /** Turns with < 6 words — each deducts 0.5 from the fluency dimension. */
+  shortTurns: number;
 }
 
 function AzurePanel({ data }: { data: AzureAvg | null }) {
@@ -377,11 +379,13 @@ export default function Home() {
       ? wpmTurns.reduce((s, m) => s + m.pronunciation!.wpm, 0) / wpmTurns.length
       : 0;
     const score = Math.round(pronunciation);
+    const shortTurns = scored.filter((m) => (m.pronunciation!.wpm ?? 0) === 0).length;
     return {
       pronunciation,
       wpm,
       score,
       count: scored.length,
+      shortTurns,
     };
   }, [history]);
 

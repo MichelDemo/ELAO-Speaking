@@ -140,9 +140,11 @@ Calibration anchors — upper levels (generous floor):
 - Natural delivery, varied vocabulary, and complete comprehension with only minor slips → C1, not B2`;
 
 interface SttContext {
-  pronunciation: number; // avg Deepgram word confidence × 100
+  pronunciation: number;
   wpm: number;
   count: number;
+  /** Turns with < 6 words — deduct 0.5 from fluency per incomplete turn. */
+  shortTurns?: number;
 }
 
 export function buildEvaluationUserMessage(
@@ -155,12 +157,15 @@ export function buildEvaluationUserMessage(
     language === "nl-BE" ? "Dutch (Belgian)" :
     "English";
 
+  const shortPenalty = sttContext?.shortTurns
+    ? `\n  Incomplete turns (< 6 words): ${sttContext.shortTurns} — deduct 0.5 from fluency score per incomplete turn (hard rule).`
+    : "";
+
   const azureSection = sttContext
-    ? `\nSpeech recognition data (averaged over ${sttContext.count} turn${sttContext.count > 1 ? "s" : ""} — informational only, do not override your holistic assessment):
-  Pronunciation confidence: ${Math.round(sttContext.pronunciation)}/100  (avg Whisper segment score — cube-root scaled)
+    ? `\nSpeech recognition data (averaged over ${sttContext.count} turn${sttContext.count > 1 ? "s" : ""}):
+  Pronunciation confidence: ${Math.round(sttContext.pronunciation)}/100
   Speaking rate:            ${Math.round(sttContext.wpm)} WPM
-  (Score ≥ 70 → clear audio, apply ASR calibration rules above; score < 50 → noisy/unclear.
-   Use the WPM figure to anchor the fluency dimension score per the mapping table above.)\n`
+  (Use the WPM figure to anchor the fluency dimension score per the mapping table above.)${shortPenalty}\n`
     : "";
 
   return `Language spoken: ${langLabel}

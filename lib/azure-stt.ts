@@ -78,11 +78,13 @@ export class AzureSTT {
 
     const audioConfig = sdk.AudioConfig.fromDefaultMicrophoneInput();
 
-    // Free-speak mode: empty referenceText → assess without a fixed script
+    // Free-speak mode: Phoneme granularity so we get per-phoneme scores.
+    // Using the minimum phoneme score per word is more sensitive to subtle
+    // mispronunciations than the word-level average Azure reports.
     const pronunciationConfig = new sdk.PronunciationAssessmentConfig(
       "",
       sdk.PronunciationAssessmentGradingSystem.HundredMark,
-      sdk.PronunciationAssessmentGranularity.Word,
+      sdk.PronunciationAssessmentGranularity.Phoneme,
       false // enableMiscue (needs reference text)
     );
 
@@ -111,13 +113,21 @@ export class AzureSTT {
             const word = w as {
               Word: string;
               PronunciationAssessment?: { AccuracyScore?: number; ErrorType?: string };
+              Phonemes?: Array<{ PronunciationAssessment?: { AccuracyScore?: number } }>;
             };
             const accuracyScore = Math.round(word.PronunciationAssessment?.AccuracyScore ?? 100);
             const errorType = word.PronunciationAssessment?.ErrorType ?? "None";
+            // Use the minimum phoneme score — a single bad phoneme pulls the
+            // whole word down, catching subtle mispronunciations the word-level
+            // average would smooth over.
+            const phonemes = word.Phonemes ?? [];
+            const minPhoneme = phonemes.length > 0
+              ? Math.min(...phonemes.map((p) => p.PronunciationAssessment?.AccuracyScore ?? 100))
+              : accuracyScore;
             return {
               word: word.Word ?? "",
-              confidence: discreteWordConfidence(accuracyScore, errorType),
-              accuracyScore,
+              confidence: discreteWordConfidence(minPhoneme, errorType),
+              accuracyScore: minPhoneme,
               errorType,
             };
           }
