@@ -17,7 +17,7 @@ OUTPUT SCHEMA:
 {
   "candidate": string,           // name if found in transcript, else "Unknown"
   "language": string,            // "English" | "German" | "French" | etc.
-  "level": string,               // CEFR label: "A0" | "A1" | "A2" | "B1" | "B2" | "C1" | "C2" | "A2-B1" | "B1-B2" | "B2-C1" | "C1-C2"
+  "level": string,               // CEFR label: "A0" | "A1" | "A1+" | "A2" | "A2+" | "B1" | "B1+" | "B2" | "B2+" | "C1" | "C1+" | "C2"
   "score_percent": number,       // integer 0-100 mapped to CEFR band (see scale below)
   "confidence": "high" | "medium" | "low",  // low if transcript < ~300 words
   "dimensions": {
@@ -31,14 +31,19 @@ OUTPUT SCHEMA:
   "summary": string              // 2-3 sentence overall assessment
 }
 
-CEFR PERCENTAGE SCALE:
-0-2: A0(0) | 3-5: A0(25) | 6-8: A0(50) | 9-11: A0(75)
-12-16: A1(0) | 17-20: A1(25) | 21-24: A1(50) | 25-28: A1(75)
-29-32: A2(0) | 33-36: A2(25) | 37-40: A2(50) | 41-44: A2(75)
-45-48: B1(0) | 49-52: B1(25) | 53-56: B1(50) | 57-60: B1(75)
-61-64: B2(0) | 65-68: B2(25) | 69-72: B2(50) | 73-76: B2(75)
-77-80: C1(0) | 81-84: C1(25) | 85-87: C1(50) | 88-90: C1(75)
-91-100: C2
+CEFR PERCENTAGE SCALE (5-point bands):
+0-44:  A0
+45-49: A1
+50-54: A1+
+55-59: A2
+60-64: A2+
+65-69: B1
+70-74: B1+
+75-79: B2
+80-84: B2+
+85-89: C1
+90-94: C1+
+95-100: C2
 
 Place the candidate within the band based on where they sit relative to band boundaries:
 - A0–A2: err conservative — borderline between two bands → use the lower band.
