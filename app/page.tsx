@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { DeepgramSTT } from "@/lib/deepgram-stt";
 import { AzureSTT, type PronunciationResult, type WordScore } from "@/lib/azure-stt";
 import { StreamingAudioPlayer } from "@/lib/audio-player";
 import { SessionRecorder } from "@/lib/session-recorder";
@@ -356,7 +357,12 @@ export default function Home() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const audioBlobUrlRef = useRef<string | null>(null);
 
-  const sttRef = useRef<AzureSTT | null>(null);
+  const sttRef = useRef<DeepgramSTT | null>(null);
+  const azureRef = useRef<AzureSTT | null>(null);
+  /** Latest unmatched Azure pronunciation result — consumed by the next Deepgram onFinal. */
+  const azurePendingRef = useRef<PronunciationResult | null>(null);
+  /** Index in history[] where the current Deepgram turn will land — used for late Azure updates. */
+  const azureUpdateIdxRef = useRef<number | null>(null);
   const playerRef = useRef<StreamingAudioPlayer | null>(null);
   const liveAvatarRef = useRef<LiveAvatarHandle | null>(null);
   const recorderRef = useRef<SessionRecorder | null>(null);
@@ -477,16 +483,45 @@ export default function Home() {
       playerRef.current.init();
     }
 
-    sttRef.current = new AzureSTT(language, {
+    // ── Deepgram: primary transcription (text → conversation) ──────────────
+    sttRef.current = new DeepgramSTT(language, {
       onPartial: (text) => {
         if (isSpeakingRef.current) return;
         setPartialUser(text);
         if (USE_HEYGEN) liveAvatarRef.current?.startListening();
       },
-      onFinal: async (text, pronunciation) => {
+      onFinal: async (text, dgPron) => {
         if (!text.trim() || isProcessingRef.current || isSpeakingRef.current) return;
         setPartialUser("");
         if (USE_HEYGEN) liveAvatarRef.current?.stopListening();
+
+        // Convert Deepgram word scores to Azure-compatible format (used as
+        // placeholder until Azure fires its pronunciation result for this turn).
+        const convertedWords: WordScore[] = dgPron.words.map((w) => ({
+          word: w.word,
+          confidence: w.confidence,
+          accuracyScore: Math.round(w.confidence * 100),
+          errorType: "None",
+        }));
+        const prelimPron: PronunciationResult = {
+          text: dgPron.text,
+          pronunciationScore: dgPron.pronunciationScore,
+          accuracyScore: dgPron.pronunciationScore,
+          wpm: dgPron.wpm,
+          words: convertedWords,
+        };
+
+        // If Azure has already fired for this utterance, use its scores;
+        // keep Deepgram's WPM (word-timestamp precision beats Azure duration).
+        const azurePron = azurePendingRef.current;
+        azurePendingRef.current = null;
+        const pronunciation: PronunciationResult = azurePron
+          ? { ...azurePron, wpm: dgPron.wpm }
+          : prelimPron;
+
+        // Mark the index where this turn will land in history[] so a late
+        // Azure result can retroactively update the word colours.
+        azureUpdateIdxRef.current = historyRef.current.length;
 
         // Capture and clear the pending-end flag before any await so a
         // concurrent timeout can't also fire __END__.
@@ -504,17 +539,40 @@ export default function Home() {
         // Let the user finish their sentence, then close gracefully.
         if (shouldEnd) await handleUserTurn("__END__");
       },
-      onError: (e) => console.error("STT error:", e),
+      onError: (e) => console.error("Deepgram STT error:", e),
     });
 
-    // Start STT — but don't let a Deepgram connection failure block the avatar
-    // from speaking. Azure TTS is independent and must always start.
+    // ── Azure: pronunciation assessment only (per-phoneme word scores) ──────
+    azureRef.current = new AzureSTT(language, {
+      onFinal: (_, azureResult) => {
+        // Ignore if avatar is speaking — avoids capturing TTS audio.
+        if (isSpeakingRef.current) return;
+        azurePendingRef.current = azureResult;
+        // Deepgram already fired → retroactively update the stored turn.
+        if (azureUpdateIdxRef.current !== null) {
+          const idx = azureUpdateIdxRef.current;
+          azureUpdateIdxRef.current = null;
+          setHistory((h) =>
+            h.map((m, i) => {
+              if (i !== idx || m.role !== "user" || !m.pronunciation) return m;
+              // Azure scores + keep Deepgram's WPM (more accurate timestamps).
+              return { ...m, pronunciation: { ...azureResult, wpm: m.pronunciation.wpm } };
+            })
+          );
+        }
+      },
+      onError: (e) => console.error("Azure pronunciation error:", e),
+    });
+
+    // Start Deepgram — failure is non-fatal (avatar TTS still works).
     try {
       await sttRef.current.start();
     } catch (e) {
-      console.error("Azure STT failed to start:", e);
-      // STT is down but TTS still works — avatar will speak, mic input is disabled
+      console.error("Deepgram STT failed to start:", e);
     }
+
+    // Start Azure in parallel (non-blocking) — pronunciation only.
+    azureRef.current.start().catch((e) => console.error("Azure STT failed to start:", e));
 
     // Kick off the conversation regardless of STT status
     await handleUserTurn("__START__");
@@ -600,8 +658,9 @@ export default function Home() {
   const runEvaluation = async () => {
     setEvaluating(true);
 
-    // Stop STT and recording the moment evaluation begins — no more input needed.
+    // Stop both STT engines and recording the moment evaluation begins.
     sttRef.current?.stop();
+    azureRef.current?.stop();
     const blob = await recorderRef.current?.stop() ?? null;
     if (blob && blob.size > 0) {
       // Revoke previous object URL to avoid memory leaks
@@ -633,6 +692,7 @@ export default function Home() {
       endTimeoutRef.current = null;
     }
     sttRef.current?.stop();
+    azureRef.current?.stop();
     if (!USE_HEYGEN) playerRef.current?.stop();
     // Recorder may already have been stopped by runEvaluation — stop() is safe
     // to call twice (returns null when MediaRecorder is already inactive).

@@ -145,8 +145,10 @@ export class DeepgramSTT {
               : (alt.confidence as number ?? 0);
 
           // WPM from first-word start to last-word end across the full utterance
+          // Only calculate WPM for substantive turns (≥ 6 words), consistent
+          // with Azure's threshold so shortTurns counting stays accurate.
           let wpm = 0;
-          if (allWords.length >= 2) {
+          if (allWords.length >= 6) {
             const duration = allWords[allWords.length - 1].end - allWords[0].start;
             if (duration >= 0.5) {
               wpm = Math.round((allWords.length / duration) * 60);
