@@ -141,10 +141,17 @@ export class AzureSTT {
           ? Math.round((wordCount / durationSec) * 60)
           : 0;
 
+        // Derive the turn-level score from the same min-phoneme data used for
+        // word colours — Azure's composite (pronResult.pronunciationScore) is
+        // too generous and doesn't reflect the per-word issues we already detect.
+        const derivedScore = words.length > 0
+          ? Math.round(words.reduce((s, w) => s + w.accuracyScore, 0) / words.length)
+          : Math.round(pronResult.pronunciationScore ?? 0);
+
         this.cb.onFinal?.(e.result.text, {
           text: e.result.text,
-          pronunciationScore: pronResult.pronunciationScore ?? 0,
-          accuracyScore: pronResult.accuracyScore ?? 0,
+          pronunciationScore: derivedScore,
+          accuracyScore: derivedScore,
           wpm,
           words,
         });
