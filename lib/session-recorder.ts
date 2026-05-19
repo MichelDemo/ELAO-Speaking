@@ -19,16 +19,14 @@ export class SessionRecorder {
 
   async start(): Promise<void> {
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,   // preserve natural room acoustics
-          noiseSuppression: false,   // don't smear consonants / sibilants
-          autoGainControl: false,    // keep consistent, uncompressed levels
-          sampleRate: 48000,         // full-bandwidth speech
-          channelCount: 1,           // mono — sufficient for voice
-        },
-        video: false,
-      });
+      // Use plain audio: true so the recorder's getUserMedia doesn't
+      // conflict with Deepgram and Azure, which open their own streams
+      // simultaneously. Browsers (especially Chrome) share audio
+      // processing state across tracks from the same device — mixing
+      // explicit constraints (sampleRate, echoCancellation) across
+      // concurrent streams can cause one of them to fail silently.
+      // The quality gain comes from the bitrate below, not the constraints.
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
 
       // Prefer Opus (best quality/size ratio for speech).
       // Fall back gracefully on browsers that don't support webm.
