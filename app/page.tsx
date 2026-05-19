@@ -476,15 +476,25 @@ export default function Home() {
   const startTurnRecording = () => {
     if (turnRecorderRef.current) return; // already recording
     const stream = sttRef.current?.getStream();
-    if (!stream) return;
-    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-      ? "audio/webm;codecs=opus" : "audio/webm";
-    turnMimeRef.current = mimeType;
-    turnChunksRef.current = [];
-    const mr = new MediaRecorder(stream, { mimeType });
-    mr.ondataavailable = (e) => { if (e.data.size > 0) turnChunksRef.current.push(e.data); };
-    mr.start(500);
-    turnRecorderRef.current = mr;
+    if (!stream) { console.warn("startTurnRecording: mic stream not available"); return; }
+    // Pick the best supported mimeType across browsers
+    const mimeType =
+      MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" :
+      MediaRecorder.isTypeSupported("audio/webm")             ? "audio/webm" :
+      MediaRecorder.isTypeSupported("audio/mp4")              ? "audio/mp4" :
+      "";
+    if (!mimeType) { console.warn("startTurnRecording: no supported mimeType"); return; }
+    try {
+      turnMimeRef.current = mimeType;
+      turnChunksRef.current = [];
+      const mr = new MediaRecorder(stream, { mimeType });
+      mr.ondataavailable = (e) => { if (e.data.size > 0) turnChunksRef.current.push(e.data); };
+      mr.onerror = (e) => console.error("TurnRecorder error:", e);
+      mr.start(500); // collect chunks every 500 ms
+      turnRecorderRef.current = mr;
+    } catch (e) {
+      console.error("startTurnRecording failed:", e);
+    }
   };
 
   const stopTurnRecording = (): Promise<string | null> => {

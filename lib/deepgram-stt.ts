@@ -83,11 +83,13 @@ export class DeepgramSTT {
       `&smart_format=true` +
       `&encoding=linear16` +
       `&sample_rate=16000` +
-      // 300 ms silence triggers speech_final (was 500 — faster turn detection).
-      `&endpointing=300` +
-      // Deepgram fires UtteranceEnd after 1000 ms of silence following any is_final.
-      // This acts as a safety net when VAD never fires speech_final (e.g. background noise).
-      `&utterance_end_ms=1000`;
+      // 800 ms silence before speech_final fires. Shorter values (300-500 ms)
+      // interrupt speakers who pause briefly mid-sentence. The "stuck" issue was
+      // caused by dropped turns (fixed by buffering), not by endpointing being too long.
+      `&endpointing=800` +
+      // UtteranceEnd as a safety net only — fired after 2500 ms of silence so it
+      // never triggers on natural mid-sentence pauses.
+      `&utterance_end_ms=2500`;
 
     // Deepgram's supported browser auth: API key as WebSocket subprotocol
     this.ws = new WebSocket(url, ["token", key]);
