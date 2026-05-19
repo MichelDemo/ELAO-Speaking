@@ -83,14 +83,14 @@ export class DeepgramSTT {
       `&smart_format=true` +
       `&encoding=linear16` +
       `&sample_rate=16000` +
-      // 1500 ms silence before speech_final fires. Non-native speakers often pause
-      // 500-1000 ms mid-sentence to find words — 800 ms was too short and caused
-      // the avatar to cut in before the speaker finished. 1500 ms gives comfortable
-      // room for mid-sentence pauses while still detecting genuine turn-ends.
-      `&endpointing=1500` +
-      // UtteranceEnd as a safety net only — fired after 3000 ms of silence so it
+      // 1200 ms silence before speech_final fires. Non-native speakers often pause
+      // 500-800 ms mid-sentence to find words — 800 ms was too short and caused
+      // the avatar to cut in. 1200 ms gives room for mid-sentence pauses without
+      // the conversation feeling sluggish (1500 ms was too long).
+      `&endpointing=1200` +
+      // UtteranceEnd as a safety net only — fired after 2500 ms of silence so it
       // never triggers on natural mid-sentence pauses.
-      `&utterance_end_ms=3000`;
+      `&utterance_end_ms=2500`;
 
     // Deepgram's supported browser auth: API key as WebSocket subprotocol
     this.ws = new WebSocket(url, ["token", key]);
@@ -186,15 +186,15 @@ export class DeepgramSTT {
         if (data.speech_final) {
           this.dispatchUtterance();
         } else {
-          // Set a 5 s fallback: if speech_final never arrives (e.g. noisy environment),
-          // dispatch anyway so the conversation doesn't get stuck. 5 s is long enough
-          // that it never triggers on mid-sentence pauses (which are ≤ 2 s even for
-          // slow speakers) but still prevents the conversation from hanging indefinitely.
+          // Set a 3.5 s fallback: if speech_final never arrives (e.g. noisy environment),
+          // dispatch anyway so the conversation doesn't get stuck. 3.5 s is long enough
+          // that it never fires on mid-sentence pauses but still prevents the
+          // conversation from hanging indefinitely.
           if (this.utteranceTimer) clearTimeout(this.utteranceTimer);
           this.utteranceTimer = setTimeout(() => {
             this.utteranceTimer = null;
             this.dispatchUtterance();
-          }, 5000);
+          }, 3500);
         }
       } else {
         // Partial: show accumulated confirmed text + live partial for live caption.

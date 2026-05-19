@@ -376,8 +376,10 @@ export default function Home() {
   const endTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const historyRef = useRef<Msg[]>([]);
   historyRef.current = history;
-  /** Turn spoken while avatar was responding — flushed after avatar finishes. */
-  const bufferedUserTurnRef = useRef<{ text: string; pronunciation: PronunciationResult } | null>(null);
+  /** Queue of turns spoken while avatar was responding — processed in order after avatar finishes. */
+  const bufferedTurnsRef = useRef<Array<{ text: string; pronunciation: PronunciationResult }>>([]);
+  /** Flush function stored in a ref so the amplitude callback can call it without stale closures. */
+  const processBufferedRef = useRef<() => void>(() => {});
   /** Per-turn MediaRecorder — one recording per user utterance, restarted after each turn. */
   const turnRecorderRef = useRef<MediaRecorder | null>(null);
   const turnChunksRef = useRef<Blob[]>([]);
@@ -520,8 +522,15 @@ export default function Home() {
     recorderRef.current.start();
     if (!USE_HEYGEN) {
       playerRef.current = new StreamingAudioPlayer((amp) => {
+        const wasSpeaking = isSpeakingRef.current;
         isSpeakingRef.current = amp > 0;
         setAmplitude(amp);
+        // When the last audio chunk finishes playing, flush any queued user turns.
+        // This is the correct moment — the SSE stream ends before audio finishes,
+        // so flushing from the SSE callback would overlap with playback.
+        if (wasSpeaking && amp === 0) {
+          processBufferedRef.current();
+        }
       });
       // Unlock the AudioContext now, while we are still inside the click handler
       // (before any await). Chrome's autoplay policy can block resume() called
@@ -559,10 +568,10 @@ export default function Home() {
               words: convertedWords,
             };
 
-        // Avatar is still talking or processing a previous turn — buffer this
-        // turn instead of dropping it. handleUserTurn flushes the buffer when done.
+        // Avatar is still talking or processing a previous turn — queue this turn.
+        // All queued turns are replayed in order once the avatar finishes speaking.
         if (isProcessingRef.current || isSpeakingRef.current) {
-          bufferedUserTurnRef.current = { text, pronunciation };
+          bufferedTurnsRef.current.push({ text, pronunciation });
           return;
         }
 
@@ -711,20 +720,29 @@ export default function Home() {
     }
     if (!isEnd) {
       isProcessingRef.current = false;
-      // If the user spoke while the avatar was responding, process that turn now.
-      const buffered = bufferedUserTurnRef.current;
-      if (buffered) {
-        bufferedUserTurnRef.current = null;
-        const turnIndex = historyRef.current.length;
-        const audioPromise = stopTurnRecording();
-        startTurnRecording();
-        azureUpdateIdxRef.current = turnIndex;
-        await handleUserTurn(buffered.text, buffered.pronunciation);
-        audioPromise.then((url) => {
-          if (url) setHistory((h) => h.map((m, i) => (i === turnIndex ? { ...m, audioUrl: url } : m)));
-        });
-      }
+      // Flush buffered turns only if audio has already finished playing.
+      // If avatar is still speaking (SSE ended before last chunk played out),
+      // the StreamingAudioPlayer amplitude→0 callback will trigger the flush
+      // at the correct moment instead.
+      processBufferedRef.current();
     }
+  };
+
+  // ── flush function: process the next queued user turn ─────────────────────
+  // Stored in a ref so the amplitude callback (which runs outside React's
+  // render cycle) always calls the latest version via processBufferedRef.current.
+  processBufferedRef.current = async () => {
+    if (isProcessingRef.current || isSpeakingRef.current) return;
+    const buffered = bufferedTurnsRef.current.shift();
+    if (!buffered) return;
+    const turnIndex = historyRef.current.length;
+    const audioPromise = stopTurnRecording();
+    startTurnRecording();
+    azureUpdateIdxRef.current = turnIndex;
+    await handleUserTurn(buffered.text, buffered.pronunciation);
+    audioPromise.then((url) => {
+      if (url) setHistory((h) => h.map((m, i) => (i === turnIndex ? { ...m, audioUrl: url } : m)));
+    });
   };
 
   const runEvaluation = async () => {
