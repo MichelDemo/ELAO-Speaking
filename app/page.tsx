@@ -513,11 +513,14 @@ export default function Home() {
   // Sends the recorded audio blob to /api/pronunciation, then retroactively
   // replaces the Deepgram confidence scores in history with Azure phoneme scores.
   // Runs non-blocking — the conversation never waits for it.
-  const callPronunciationAPI = (blob: Blob, turnIndex: number, dgWpm: number) => {
+  const callPronunciationAPI = (blob: Blob, turnIndex: number, dgWpm: number, referenceText: string) => {
     const form = new FormData();
     form.append("audio", blob, "turn.webm");
     form.append("language", language);
     form.append("wpm", String(dgWpm));
+    // Deepgram's transcript as reference so Azure can detect phoneme mismatches
+    // against the intended words (e.g. "ze" audio vs "the" phonemes → Mispronunciation).
+    form.append("referenceText", referenceText);
     fetch("/api/pronunciation", { method: "POST", body: form })
       .then((r) => r.json())
       .then((result: PronunciationResult | null) => {
@@ -616,7 +619,7 @@ export default function Home() {
         recordingPromise.then((recording) => {
           if (!recording) return;
           setHistory((h) => h.map((m, i) => (i === turnIndex ? { ...m, audioUrl: recording.url } : m)));
-          callPronunciationAPI(recording.blob, turnIndex, dgPron.wpm);
+          callPronunciationAPI(recording.blob, turnIndex, dgPron.wpm, text);
         });
 
         if (shouldEnd) await handleUserTurn("__END__");
@@ -732,7 +735,7 @@ export default function Home() {
     recordingPromise.then((recording) => {
       if (!recording) return;
       setHistory((h) => h.map((m, i) => (i === turnIndex ? { ...m, audioUrl: recording.url } : m)));
-      callPronunciationAPI(recording.blob, turnIndex, buffered.pronunciation.wpm);
+      callPronunciationAPI(recording.blob, turnIndex, buffered.pronunciation.wpm, buffered.text);
     });
   };
 
@@ -823,6 +826,13 @@ export default function Home() {
             </>
           ) : (
             <>
+              <button
+                onClick={() => sttRef.current?.forceDispatch()}
+                title="End your turn immediately without waiting for the silence timeout"
+                style={btn("#0ea5e9")}
+              >
+                ✓ Done speaking
+              </button>
               <button onClick={runEvaluation} disabled={evaluating} style={btn("#10b981")}>
                 {evaluating ? "Évaluation…" : "Évaluer (Claude)"}
               </button>

@@ -83,14 +83,13 @@ export class DeepgramSTT {
       `&smart_format=true` +
       `&encoding=linear16` +
       `&sample_rate=16000` +
-      // 1200 ms silence before speech_final fires. Non-native speakers often pause
-      // 500-800 ms mid-sentence to find words — 800 ms was too short and caused
-      // the avatar to cut in. 1200 ms gives room for mid-sentence pauses without
-      // the conversation feeling sluggish (1500 ms was too long).
-      `&endpointing=1200` +
-      // UtteranceEnd as a safety net only — fired after 2500 ms of silence so it
-      // never triggers on natural mid-sentence pauses.
-      `&utterance_end_ms=2500`;
+      // 2000 ms silence before speech_final fires. Non-native speakers regularly
+      // pause 1–1.5 s mid-sentence while searching for a word — anything shorter
+      // cuts them off. A manual "Done" button in the UI lets users end their turn
+      // immediately if they prefer not to wait for the VAD timeout.
+      `&endpointing=2000` +
+      // UtteranceEnd fires after 4000 ms of silence as a last-resort fallback.
+      `&utterance_end_ms=4000`;
 
     // Deepgram's supported browser auth: API key as WebSocket subprotocol
     this.ws = new WebSocket(url, ["token", key]);
@@ -206,6 +205,15 @@ export class DeepgramSTT {
     } catch {
       // Ignore malformed messages (keepalives, metadata)
     }
+  }
+
+  /**
+   * Manually dispatch the accumulated utterance immediately — used by the
+   * "Done speaking" button so the user can end their turn without waiting
+   * for the VAD silence timeout.
+   */
+  forceDispatch() {
+    this.dispatchUtterance();
   }
 
   /** Expose the mic stream so callers can attach a per-turn MediaRecorder. */
