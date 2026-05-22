@@ -22,6 +22,12 @@ export interface PronunciationResult {
   /** Words per minute — calculated from Azure result duration */
   wpm: number;
   words: WordScore[];
+  /**
+   * Which engine produced these scores.
+   * 'deepgram' = initial word-confidence proxy (shown while Azure is pending).
+   * 'azure'    = server-side Azure Pronunciation Assessment REST result.
+   */
+  source?: "deepgram" | "azure";
 }
 
 export interface SttCallbacks {

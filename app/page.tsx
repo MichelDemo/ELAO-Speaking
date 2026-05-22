@@ -311,6 +311,25 @@ function UtteranceBadges({ p }: { p: PronunciationResult }) {
           {Math.round(val)}
         </span>
       ))}
+      {/* Source badge: DG = Deepgram confidence proxy (pending Azure), AZ = Azure phoneme scores */}
+      <span
+        title={
+          p.source === "azure"
+            ? "Scored by Azure Pronunciation Assessment (phoneme-level)"
+            : "Scored by Deepgram confidence — Azure assessment pending"
+        }
+        style={{
+          background: p.source === "azure" ? "#60a5fa" : "#475569",
+          color: p.source === "azure" ? "#000" : "#cbd5e1",
+          borderRadius: 3,
+          padding: "1px 5px",
+          fontSize: 10,
+          fontWeight: 700,
+          cursor: "help",
+        }}
+      >
+        {p.source === "azure" ? "AZ" : "DG"}
+      </span>
     </div>
   );
 }
@@ -513,14 +532,15 @@ export default function Home() {
   // Sends the recorded audio blob to /api/pronunciation, then retroactively
   // replaces the Deepgram confidence scores in history with Azure phoneme scores.
   // Runs non-blocking — the conversation never waits for it.
-  const callPronunciationAPI = (blob: Blob, turnIndex: number, dgWpm: number, referenceText: string) => {
+  const callPronunciationAPI = (blob: Blob, turnIndex: number, dgWpm: number) => {
     const form = new FormData();
     form.append("audio", blob, "turn.webm");
     form.append("language", language);
     form.append("wpm", String(dgWpm));
-    // Deepgram's transcript as reference so Azure can detect phoneme mismatches
-    // against the intended words (e.g. "ze" audio vs "the" phonemes → Mispronunciation).
-    form.append("referenceText", referenceText);
+    // No referenceText — server uses Azure free-speech mode so Azure's own
+    // pronunciation-assessment LM scores the phonemes. Sending Deepgram's
+    // transcript as reference caused circular scoring (reference = what was
+    // spoken → all words pass).
     fetch("/api/pronunciation", { method: "POST", body: form })
       .then((r) => r.json())
       .then((result: PronunciationResult | null) => {
@@ -571,8 +591,9 @@ export default function Home() {
         if (!text.trim()) return;
 
         // Initial pronunciation built from Deepgram word-confidence scores.
-        // The /api/pronunciation REST call fires after the turn recording stops
-        // and retroactively replaces this with Azure phoneme-level scores.
+        // source: "deepgram" is shown as a "DG" badge in the transcript until
+        // the /api/pronunciation REST call returns and replaces it with Azure
+        // phoneme-level scores (source: "azure" → "AZ" badge).
         const pronunciation: PronunciationResult = {
           text: dgPron.text,
           pronunciationScore: dgPron.pronunciationScore,
@@ -584,6 +605,7 @@ export default function Home() {
             accuracyScore: Math.round(w.confidence * 100),
             errorType: "None",
           })),
+          source: "deepgram",
         };
 
         // Avatar is still talking or processing a previous turn — queue this turn.
@@ -619,7 +641,7 @@ export default function Home() {
         recordingPromise.then((recording) => {
           if (!recording) return;
           setHistory((h) => h.map((m, i) => (i === turnIndex ? { ...m, audioUrl: recording.url } : m)));
-          callPronunciationAPI(recording.blob, turnIndex, dgPron.wpm, text);
+          callPronunciationAPI(recording.blob, turnIndex, dgPron.wpm);
         });
 
         if (shouldEnd) await handleUserTurn("__END__");
@@ -735,7 +757,7 @@ export default function Home() {
     recordingPromise.then((recording) => {
       if (!recording) return;
       setHistory((h) => h.map((m, i) => (i === turnIndex ? { ...m, audioUrl: recording.url } : m)));
-      callPronunciationAPI(recording.blob, turnIndex, buffered.pronunciation.wpm, buffered.text);
+      callPronunciationAPI(recording.blob, turnIndex, buffered.pronunciation.wpm);
     });
   };
 

@@ -14,11 +14,17 @@
  * The AZURE_SPEECH_KEY never leaves the server.
  */
 
-/** Discrete confidence level → 4 colour buckets (matches wordColor() in page.tsx) */
+/**
+ * Discrete confidence level → 4 colour buckets (matches wordColor() in page.tsx).
+ * Thresholds are tuned for Azure free-speech mode, which clusters native scores
+ * in the 85-100 range. Setting the green floor at 83 means a learner needs to
+ * nail every phoneme to stay green — a score of 80 (slight imprecision) shows
+ * yellow instead of green.
+ */
 function discreteWordConfidence(accuracyScore: number, errorType: string): number {
-  if (accuracyScore < 40 || errorType === "Omission") return 0.20;   // red
-  if (errorType === "Mispronunciation" || accuracyScore < 65) return 0.45; // orange
-  if (accuracyScore < 80) return 0.70;  // yellow
+  if (accuracyScore < 45 || errorType === "Omission") return 0.20;   // red
+  if (errorType === "Mispronunciation" || accuracyScore < 68) return 0.45; // orange
+  if (accuracyScore < 83) return 0.70;  // yellow
   return 1.00;  // green
 }
 
@@ -34,12 +40,12 @@ export async function POST(req: Request) {
   const audio = formData.get("audio") as Blob | null;
   const langCode = (formData.get("language") as string | null) ?? "fr";
   const dgWpm = parseInt((formData.get("wpm") as string | null) ?? "0", 10);
-  // Deepgram's transcript used as reference — enables Mispronunciation detection.
-  const referenceText = ((formData.get("referenceText") as string | null) ?? "").trim();
 
   if (!audio || audio.size === 0) {
     return new Response("No audio", { status: 400 });
   }
+
+  console.log(`[pronunciation] blob=${audio.size}B type=${audio.type} lang=${langCode} wpm=${dgWpm}`);
 
   const langMap: Record<string, string> = {
     fr: "fr-FR",
@@ -47,24 +53,24 @@ export async function POST(req: Request) {
     "nl-BE": "nl-BE",
   };
 
-  // With a reference text: enable miscue detection so Azure catches omissions,
-  // insertions, and phoneme-level mismatches against the intended words.
-  // Without (shouldn't happen in normal flow): fall back to free-speech mode.
-  const pronConfigJson = JSON.stringify(
-    referenceText
-      ? {
-          ReferenceText: referenceText,
-          GradingSystem: "HundredMark",
-          Granularity: "Phoneme",
-          EnableMiscue: true,
-        }
-      : {
-          ReferenceText: "",
-          GradingSystem: "HundredMark",
-          Granularity: "Phoneme",
-          EnableMiscue: false,
-        }
-  );
+  // Free-speech mode: Azure runs its own phonemic transcription, then scores the
+  // user's phonemes against the expected phonemes for the words it recognised.
+  //
+  // Why NOT use Deepgram's transcript as ReferenceText + EnableMiscue:
+  //   Deepgram is a transcription model optimised for ASR accuracy. When a learner
+  //   says "ze" (mispronouncing "the"), Deepgram often outputs "ze" — it transcribes
+  //   what it hears. Using that as the reference means Azure scores "ze" against "ze"
+  //   → perfect score. The circular reference defeats the whole system.
+  //
+  // In free-speech mode, Azure's pronunciation-assessment LM is specifically trained
+  // for L2 phoneme detection. It is more likely to normalise "ze" → "the" and then
+  // score the user's /z/ phoneme against the expected /ð/ → Mispronunciation flagged.
+  const pronConfigJson = JSON.stringify({
+    ReferenceText: "",
+    GradingSystem: "HundredMark",
+    Granularity: "Phoneme",
+    EnableMiscue: false,
+  });
   const pronConfigB64 = Buffer.from(pronConfigJson).toString("base64");
 
   // Normalise Content-Type: Azure is strict about the exact string.
@@ -103,7 +109,7 @@ export async function POST(req: Request) {
 
   if (data.RecognitionStatus !== "Success" || !data.NBest?.[0]) {
     // Speech not recognised — silence, background noise, or clip too short.
-    console.warn("Azure pronunciation: no speech recognised. Status:", data.RecognitionStatus);
+    console.warn(`[pronunciation] Azure no-speech: status=${data.RecognitionStatus}`);
     return Response.json(null);
   }
 
@@ -147,11 +153,15 @@ export async function POST(req: Request) {
         )
       : Math.round(best.PronunciationAssessment?.PronScore ?? 0);
 
+  console.log(`[pronunciation] OK text="${best.Display}" score=${derivedScore} wpm=${wpm} words=${words.length}`);
+  console.log(`[pronunciation] word scores: ${words.map((w: { word: string; accuracyScore: number; errorType: string }) => `${w.word}(${w.accuracyScore},${w.errorType})`).join(" ")}`);
+
   return Response.json({
     text: best.Display ?? "",
     pronunciationScore: derivedScore,
     accuracyScore: derivedScore,
     wpm,
     words,
+    source: "azure",
   });
 }
