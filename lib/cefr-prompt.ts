@@ -32,18 +32,18 @@ OUTPUT SCHEMA:
 }
 
 CEFR PERCENTAGE SCALE (5-point bands):
-0-44:  A0
-45-49: A1
-50-54: A1+
-55-59: A2
-60-64: A2+
-65-69: B1
-70-74: B1+
-75-79: B2
-80-84: B2+
-85-89: C1
-90-94: C1+
-95-100: C2
+0-39:  A0
+40-44: A1
+45-49: A1+
+50-54: A2
+55-59: A2+
+60-64: B1
+65-69: B1+
+70-74: B2
+75-79: B2+
+80-84: C1
+85-89: C1+
+90-100: C2
 
 Place the candidate within the band based on where they sit relative to band boundaries:
 - A0–A2: err conservative — borderline between two bands → use the lower band.
