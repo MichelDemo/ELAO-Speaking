@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { DeepgramSTT } from "@/lib/deepgram-stt";
-import type { PronunciationResult, WordScore } from "@/lib/azure-stt";
+import { AzureSTT, type PronunciationResult, type WordScore } from "@/lib/azure-stt";
 import { StreamingAudioPlayer } from "@/lib/audio-player";
 import { SessionRecorder } from "@/lib/session-recorder";
 import { getSupabase } from "@/lib/supabase";
@@ -377,7 +376,7 @@ export default function Home() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const audioBlobUrlRef = useRef<string | null>(null);
 
-  const sttRef = useRef<DeepgramSTT | null>(null);
+  const sttRef = useRef<AzureSTT | null>(null);
   const playerRef = useRef<StreamingAudioPlayer | null>(null);
   const liveAvatarRef = useRef<LiveAvatarHandle | null>(null);
   const recorderRef = useRef<SessionRecorder | null>(null);
@@ -398,6 +397,12 @@ export default function Home() {
   const turnRecorderRef = useRef<MediaRecorder | null>(null);
   const turnChunksRef = useRef<Blob[]>([]);
   const turnMimeRef = useRef<string>("audio/webm");
+  /**
+   * Dedicated mic stream for per-turn and session recording.
+   * AzureSTT manages its own internal getUserMedia — this stream is for
+   * MediaRecorder only, so there is no AudioContext conflict.
+   */
+  const micStreamRef = useRef<MediaStream | null>(null);
 
   // Derived: average Azure pronunciation scores across all scored user turns
   const azureAvg = useMemo<AzureAvg | null>(() => {
@@ -491,7 +496,7 @@ export default function Home() {
   // ── per-turn recorder helpers ──────────────────────────────────────────────
   const startTurnRecording = () => {
     if (turnRecorderRef.current) return; // already recording
-    const stream = sttRef.current?.getStream();
+    const stream = micStreamRef.current;
     if (!stream) { console.warn("startTurnRecording: mic stream not available"); return; }
     // Pick the best supported mimeType across browsers
     const mimeType =
@@ -528,32 +533,7 @@ export default function Home() {
     });
   };
 
-  // ── server-side Azure phoneme assessment ──────────────────────────────────
-  // Sends the recorded audio blob to /api/pronunciation, then retroactively
-  // replaces the Deepgram confidence scores in history with Azure phoneme scores.
-  // Runs non-blocking — the conversation never waits for it.
-  const callPronunciationAPI = (blob: Blob, turnIndex: number, dgWpm: number) => {
-    const form = new FormData();
-    form.append("audio", blob, "turn.webm");
-    form.append("language", language);
-    form.append("wpm", String(dgWpm));
-    // No referenceText — server uses Azure free-speech mode so Azure's own
-    // pronunciation-assessment LM scores the phonemes. Sending Deepgram's
-    // transcript as reference caused circular scoring (reference = what was
-    // spoken → all words pass).
-    fetch("/api/pronunciation", { method: "POST", body: form })
-      .then((r) => r.json())
-      .then((result: PronunciationResult | null) => {
-        if (!result) return;
-        setHistory((h) =>
-          h.map((m, i) => {
-            if (i !== turnIndex || m.role !== "user" || !m.pronunciation) return m;
-            return { ...m, pronunciation: result };
-          })
-        );
-      })
-      .catch((e) => console.error("Pronunciation REST error:", e));
-  };
+  // callPronunciationAPI removed — AzureSTT SDK returns phoneme-level scores directly.
 
   // ── session ──
   const startSession = async () => {
@@ -581,33 +561,18 @@ export default function Home() {
       playerRef.current.init();
     }
 
-    // ── Deepgram: primary transcription (text → conversation) ──────────────
-    sttRef.current = new DeepgramSTT(language, {
+    // ── Azure STT: transcription + pronunciation in one step ─────────────────
+    sttRef.current = new AzureSTT(language, {
       onPartial: (text) => {
         if (isSpeakingRef.current) return;
         setPartialUser(text);
         if (USE_HEYGEN) liveAvatarRef.current?.startListening();
       },
-      onFinal: async (text, dgPron) => {
+      onFinal: async (text, azurePron) => {
         if (!text.trim()) return;
 
-        // Initial pronunciation built from Deepgram word-confidence scores.
-        // source: "deepgram" is shown as a "DG" badge in the transcript until
-        // the /api/pronunciation REST call returns and replaces it with Azure
-        // phoneme-level scores (source: "azure" → "AZ" badge).
-        const pronunciation: PronunciationResult = {
-          text: dgPron.text,
-          pronunciationScore: dgPron.pronunciationScore,
-          accuracyScore: dgPron.pronunciationScore,
-          wpm: dgPron.wpm,
-          words: dgPron.words.map((w) => ({
-            word: w.word,
-            confidence: w.confidence,
-            accuracyScore: Math.round(w.confidence * 100),
-            errorType: "None",
-          })),
-          source: "deepgram",
-        };
+        // Azure SDK returns per-phoneme scores directly — no secondary REST call needed.
+        const pronunciation: PronunciationResult = { ...azurePron, source: "azure" };
 
         // Avatar is still talking or processing a previous turn — queue this turn.
         // All queued turns are replayed in order once the avatar finishes speaking.
@@ -637,44 +602,44 @@ export default function Home() {
 
         await handleUserTurn(text, pronunciation);
 
-        // Retroactively attach the audio URL and kick off Azure phoneme assessment.
-        // Both happen via the same .then() so they share the resolved blob.
+        // Attach per-turn audio URL for playback in transcript.
         recordingPromise.then((recording) => {
           if (!recording) return;
           setHistory((h) => h.map((m, i) => (i === turnIndex ? { ...m, audioUrl: recording.url } : m)));
-          callPronunciationAPI(recording.blob, turnIndex, dgPron.wpm);
         });
 
         if (shouldEnd) await handleUserTurn("__END__");
       },
-      onError: (e) => console.error("Deepgram STT error:", e),
+      onError: (e) => console.error("Azure STT error:", e),
     });
 
-    // Start Deepgram — failure is non-fatal (avatar TTS still works).
+    // Open a dedicated mic stream for per-turn recording.
+    // AzureSTT manages its own internal getUserMedia — this stream is MediaRecorder-only,
+    // so there is no AudioContext conflict of any kind.
+    try {
+      micStreamRef.current = await navigator.mediaDevices.getUserMedia({
+        audio: { autoGainControl: true, echoCancellation: true, noiseSuppression: true },
+        video: false,
+      });
+    } catch (e) {
+      console.warn("Mic stream for recording unavailable:", e);
+    }
+
+    // Start Azure STT — failure is non-fatal (avatar TTS still works).
     try {
       await sttRef.current.start();
-      startTurnRecording(); // begin recording the first turn on Deepgram's mic stream
+      startTurnRecording(); // begin recording the first user turn
 
       if (!USE_HEYGEN && playerRef.current) {
-        // Session recording: TTS audio only (via the player's recordingDest).
-        // We intentionally do NOT connect Deepgram's mic stream here.
-        // Chrome only delivers a MediaStreamTrack to one AudioContext at a time;
-        // calling addMicStream() would feed the same track into the player's
-        // 48 kHz AudioContext while Deepgram's 16 kHz AudioContext is already
-        // consuming it — one of the two gets silence, and in practice it is
-        // Deepgram's ScriptProcessorNode that stops receiving audio, making the
-        // entire STT pipeline deaf. Per-turn recordings (the individual players
-        // in the transcript) still capture user audio via MediaRecorder on the
-        // raw mic stream, which is unaffected.
+        // Session recording: TTS audio via the player's recordingDest.
         const ttsStream = playerRef.current.getRecordingStream();
-        recorderRef.current = new SessionRecorder(ttsStream ?? undefined);
+        recorderRef.current = new SessionRecorder(ttsStream ?? (micStreamRef.current ?? undefined));
       } else {
-        // HeyGen mode or STT fallback: mic-only session recording.
-        recorderRef.current = new SessionRecorder();
+        recorderRef.current = new SessionRecorder(micStreamRef.current ?? undefined);
       }
     } catch (e) {
-      console.error("Deepgram STT failed to start:", e);
-      recorderRef.current = new SessionRecorder(); // mic-only fallback
+      console.error("Azure STT failed to start:", e);
+      recorderRef.current = new SessionRecorder(micStreamRef.current ?? undefined);
     }
     recorderRef.current.start();
 
@@ -788,17 +753,16 @@ export default function Home() {
     recordingPromise.then((recording) => {
       if (!recording) return;
       setHistory((h) => h.map((m, i) => (i === turnIndex ? { ...m, audioUrl: recording.url } : m)));
-      callPronunciationAPI(recording.blob, turnIndex, buffered.pronunciation.wpm);
     });
   };
 
   const runEvaluation = async () => {
     setEvaluating(true);
 
-    // Stop turn recorder first — it uses Deepgram's mic stream which must still be alive.
     await stopTurnRecording();
-    // Stop STT and session recording the moment evaluation begins.
     sttRef.current?.stop();
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    micStreamRef.current = null;
     const blob = await recorderRef.current?.stop() ?? null;
     if (blob && blob.size > 0) {
       // Revoke previous object URL to avoid memory leaks
@@ -829,8 +793,10 @@ export default function Home() {
       clearTimeout(endTimeoutRef.current);
       endTimeoutRef.current = null;
     }
-    await stopTurnRecording(); // must come before sttRef.stop() which kills the mic stream
+    await stopTurnRecording();
     sttRef.current?.stop();
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    micStreamRef.current = null;
     // Stop session recorder BEFORE closing the player's AudioContext.
     // The combined stream is sourced from the player's MediaStreamDestinationNode —
     // closing the AudioContext first cuts the stream before the recorder can flush
