@@ -687,79 +687,89 @@ export default function Home() {
     const isStart = userText === "__START__";
     const isEnd   = userText === "__END__";
 
-    const newHistory: Msg[] = (isStart || isEnd)
-      ? historyRef.current
-      : [...historyRef.current, { role: "user", content: userText, pronunciation }];
+    try {
+      const newHistory: Msg[] = (isStart || isEnd)
+        ? historyRef.current
+        : [...historyRef.current, { role: "user", content: userText, pronunciation }];
 
-    if (!isStart && !isEnd) setHistory(newHistory);
-    setStreamingAssistant("");
+      if (!isStart && !isEnd) setHistory(newHistory);
+      setStreamingAssistant("");
 
-    const userMessage = isStart
-      ? language === "fr"
-        ? "Bonjour, démarrons la conversation."
-        : "Hello, let's start the conversation."
-      : isEnd
-        ? "__END__"
-        : userText;
+      const userMessage = isStart
+        ? language === "fr"
+          ? "Bonjour, démarrons la conversation."
+          : "Hello, let's start the conversation."
+        : isEnd
+          ? "__END__"
+          : userText;
 
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ language, history: newHistory, userMessage }),
-    });
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language, history: newHistory, userMessage }),
+      });
 
-    if (!res.body) {
-      isProcessingRef.current = false;
-      return;
-    }
+      if (!res.body) {
+        isProcessingRef.current = false;
+        return;
+      }
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let assistantText = "";
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let assistantText = "";
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
 
-      const events = buffer.split("\n\n");
-      buffer = events.pop() ?? "";
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
 
-      for (const evt of events) {
-        const evtMatch = evt.match(/^event: (\w+)/m);
-        const dataMatch = evt.match(/^data: (.+)$/m);
-        if (!evtMatch || !dataMatch) continue;
+        for (const evt of events) {
+          const evtMatch = evt.match(/^event: (\w+)/m);
+          const dataMatch = evt.match(/^data: (.+)$/m);
+          if (!evtMatch || !dataMatch) continue;
 
-        const type = evtMatch[1];
-        const data = dataMatch[1];
+          const type = evtMatch[1];
+          const data = dataMatch[1];
 
-        if (type === "text") {
-          const { delta } = JSON.parse(data);
-          assistantText += delta;
-          setStreamingAssistant(assistantText);
-        } else if (type === "audio") {
-          if (USE_HEYGEN) {
-            liveAvatarRef.current?.sendAudio(data);
-          } else {
-            playerRef.current?.playChunk(data);
+          if (type === "text") {
+            const { delta } = JSON.parse(data);
+            assistantText += delta;
+            setStreamingAssistant(assistantText);
+          } else if (type === "audio") {
+            if (USE_HEYGEN) {
+              liveAvatarRef.current?.sendAudio(data);
+            } else {
+              playerRef.current?.playChunk(data);
+            }
+          } else if (type === "done") {
+            const { fullText } = JSON.parse(data);
+            setHistory((h) => [...h, { role: "assistant", content: fullText }]);
+            setStreamingAssistant("");
+            if (USE_HEYGEN) liveAvatarRef.current?.speakEnd();
+          } else if (type === "error") {
+            console.error("Stream error:", data);
           }
-        } else if (type === "done") {
-          const { fullText } = JSON.parse(data);
-          setHistory((h) => [...h, { role: "assistant", content: fullText }]);
-          setStreamingAssistant("");
-          if (USE_HEYGEN) liveAvatarRef.current?.speakEnd();
-        } else if (type === "error") {
-          console.error("Stream error:", data);
         }
       }
-    }
-    if (!isEnd) {
+
+      if (!isEnd) {
+        isProcessingRef.current = false;
+        // Flush buffered turns only if audio has already finished playing.
+        // If avatar is still speaking (SSE ended before last chunk played out),
+        // the StreamingAudioPlayer amplitude→0 callback will trigger the flush
+        // at the correct moment instead.
+        processBufferedRef.current();
+      }
+    } catch (err) {
+      // Any network error or malformed JSON in the SSE stream would otherwise
+      // leave isProcessingRef permanently true — every subsequent user turn
+      // buffers and nothing ever flushes, making the system appear deaf.
+      console.error("handleUserTurn failed:", err);
       isProcessingRef.current = false;
-      // Flush buffered turns only if audio has already finished playing.
-      // If avatar is still speaking (SSE ended before last chunk played out),
-      // the StreamingAudioPlayer amplitude→0 callback will trigger the flush
-      // at the correct moment instead.
       processBufferedRef.current();
     }
   };

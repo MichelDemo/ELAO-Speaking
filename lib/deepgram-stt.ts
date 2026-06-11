@@ -117,6 +117,9 @@ export class DeepgramSTT {
     this.ws.addEventListener("error", () =>
       this.cb.onError?.(new Error("Deepgram WebSocket error"))
     );
+    this.ws.addEventListener("close", (e: CloseEvent) => {
+      console.warn(`[DG] WebSocket closed — code=${e.code} reason="${e.reason}" clean=${e.wasClean}`);
+    });
 
     await this.startAudio();
   }
@@ -265,7 +268,18 @@ export class DeepgramSTT {
       },
       video: false,
     });
+
     this.audioContext = new AudioContext({ sampleRate: 16000 });
+
+    // CRITICAL: AudioContexts created inside async functions (i.e. after any
+    // await, even from a user-gesture handler) may start in "suspended" state
+    // in Chrome. Without an explicit resume() the ScriptProcessorNode's
+    // onaudioprocess callback never fires, Deepgram receives zero bytes, and
+    // the system appears completely deaf. Always resume explicitly.
+    if (this.audioContext.state !== "running") {
+      await this.audioContext.resume();
+    }
+    console.log("[DG] AudioContext state:", this.audioContext.state);
 
     const source = this.audioContext.createMediaStreamSource(this.mediaStream);
 
@@ -273,6 +287,7 @@ export class DeepgramSTT {
     // Deprecated but universally supported; AudioWorklet would be the modern alternative.
     this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
 
+    let packetCount = 0;
     this.processor.onaudioprocess = (e) => {
       if (this.ws?.readyState !== WebSocket.OPEN) return;
       const float32 = e.inputBuffer.getChannelData(0);
@@ -282,6 +297,10 @@ export class DeepgramSTT {
         int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
       }
       this.ws.send(int16.buffer);
+      // Log first few packets so we can confirm audio is flowing
+      if (++packetCount <= 3) {
+        console.log(`[DG] onaudioprocess packet #${packetCount}, bytes=${int16.byteLength}`);
+      }
     };
 
     // Connect through a silent gain node so the processor stays active
@@ -291,6 +310,7 @@ export class DeepgramSTT {
     source.connect(this.processor);
     this.processor.connect(silentGain);
     silentGain.connect(this.audioContext.destination);
+    console.log("[DG] audio pipeline connected — waiting for onaudioprocess");
   }
 
   stop() {
