@@ -656,12 +656,18 @@ export default function Home() {
       startTurnRecording(); // begin recording the first turn on Deepgram's mic stream
 
       if (!USE_HEYGEN && playerRef.current) {
-        // Route mic into the player's MediaStreamDestinationNode so the session
-        // recording captures both sides: avatar TTS + user voice.
-        const micStream = sttRef.current.getStream();
-        if (micStream) playerRef.current.addMicStream(micStream);
-        const combinedStream = playerRef.current.getRecordingStream();
-        recorderRef.current = new SessionRecorder(combinedStream ?? undefined);
+        // Session recording: TTS audio only (via the player's recordingDest).
+        // We intentionally do NOT connect Deepgram's mic stream here.
+        // Chrome only delivers a MediaStreamTrack to one AudioContext at a time;
+        // calling addMicStream() would feed the same track into the player's
+        // 48 kHz AudioContext while Deepgram's 16 kHz AudioContext is already
+        // consuming it — one of the two gets silence, and in practice it is
+        // Deepgram's ScriptProcessorNode that stops receiving audio, making the
+        // entire STT pipeline deaf. Per-turn recordings (the individual players
+        // in the transcript) still capture user audio via MediaRecorder on the
+        // raw mic stream, which is unaffected.
+        const ttsStream = playerRef.current.getRecordingStream();
+        recorderRef.current = new SessionRecorder(ttsStream ?? undefined);
       } else {
         // HeyGen mode or STT fallback: mic-only session recording.
         recorderRef.current = new SessionRecorder();

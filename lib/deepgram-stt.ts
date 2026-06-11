@@ -187,36 +187,15 @@ export class DeepgramSTT {
         this.pendingWords.push(...(alt.words ?? []));
 
         if (data.speech_final) {
-          // Don't dispatch blindly — check whether the transcript looks like a
-          // finished utterance before committing.
-          //
-          // With punctuate=true + smart_format=true, Deepgram adds terminal
-          // punctuation (. ! ?) to complete sentences and leaves fragments
-          // unpunctuated. "Je voudrais" → no period → fragment, wait.
-          // "Je comprends." → period → complete, dispatch now.
-          //
-          // Word-count fallback (≥ 6): a long phrase without punctuation is
-          // almost certainly a complete thought regardless of Deepgram's
-          // punctuation model (e.g. proper nouns, code-switching, accents).
-          const text = this.pendingTranscript.trim();
-          const hasTerminalPunct = /[.!?]$/.test(text);
-          const wordCount = text.split(/\s+/).filter(Boolean).length;
-
-          if (hasTerminalPunct || wordCount >= 6) {
-            // Looks complete — dispatch immediately.
-            this.dispatchUtterance();
-          } else {
-            // Fragment (short, no terminal punctuation) — learner likely paused
-            // mid-sentence. Set a grace timer; UtteranceEnd (6 s from stop)
-            // will fire first in normal conditions and dispatch via the handler
-            // above. The grace timer (4 s from now = ~7.5 s from user stopping)
-            // is only a safety net if UtteranceEnd doesn't fire.
-            if (this.utteranceTimer) clearTimeout(this.utteranceTimer);
-            this.utteranceTimer = setTimeout(() => {
-              this.utteranceTimer = null;
-              this.dispatchUtterance();
-            }, 4000);
-          }
+          // Dispatch immediately. speech_final only fires after endpointing ms
+          // (3500 ms) of VAD-detected silence — the user has genuinely stopped.
+          // With autoGainControl:true restored, VAD receives a normalised signal
+          // and no longer misfires on natural voice dynamics (trailing syllables,
+          // soft breaths). A semantic completeness check was tried here but caused
+          // the system to feel deaf: short answers (≤ 5 words, no terminal punct)
+          // waited 6–10 s before dispatching, which users perceived as the system
+          // ignoring them entirely.
+          this.dispatchUtterance();
         } else {
           // Set a 5 s fallback: if speech_final never arrives (e.g. noisy environment
           // where VAD can't detect clean silence), dispatch anyway so the conversation
