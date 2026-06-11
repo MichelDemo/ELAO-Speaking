@@ -534,7 +534,37 @@ export default function Home() {
     });
   };
 
-  // callPronunciationAPI removed — AzureSTT SDK returns phoneme-level scores directly.
+  // ── two-pass pronunciation: REST API with Azure transcript as reference ──────
+  // Pass 1: AzureSTT SDK scores are shown immediately (source:"azure").
+  // Pass 2 (this function): sends the recorded audio + Azure's own transcript to
+  //   /api/pronunciation. With EnableMiscue:true and ReferenceText set, Azure
+  //   compares actual phonemes against the expected phonemes for those words —
+  //   catching substitutions (ze→the), omissions, and insertions.
+  //   Result overwrites the SDK scores in-place; the badge stays "AZ".
+  const callPronunciationAPI = (
+    blob: Blob,
+    turnIndex: number,
+    wpm: number,
+    referenceText: string,
+  ) => {
+    const form = new FormData();
+    form.append("audio", blob, "turn.webm");
+    form.append("language", language);
+    form.append("wpm", String(wpm));
+    form.append("referenceText", referenceText);
+    fetch("/api/pronunciation", { method: "POST", body: form })
+      .then((r) => r.json())
+      .then((result: PronunciationResult | null) => {
+        if (!result) return;
+        setHistory((h) =>
+          h.map((m, i) => {
+            if (i !== turnIndex || m.role !== "user" || !m.pronunciation) return m;
+            return { ...m, pronunciation: { ...result, source: "azure" } };
+          })
+        );
+      })
+      .catch((e) => console.error("Pronunciation REST error:", e));
+  };
 
   // ── session ──
   const startSession = async () => {
@@ -603,10 +633,13 @@ export default function Home() {
 
         await handleUserTurn(text, pronunciation);
 
-        // Attach per-turn audio URL for playback in transcript.
+        // Attach audio URL + kick off accurate REST pronunciation assessment.
+        // Pass 1 (SDK scores) is already shown; pass 2 overwrites with more
+        // accurate scores using Azure's own transcript as the reference.
         recordingPromise.then((recording) => {
           if (!recording) return;
           setHistory((h) => h.map((m, i) => (i === turnIndex ? { ...m, audioUrl: recording.url } : m)));
+          callPronunciationAPI(recording.blob, turnIndex, azurePron.wpm, text);
         });
 
         if (shouldEnd) await handleUserTurn("__END__");
@@ -761,6 +794,7 @@ export default function Home() {
     recordingPromise.then((recording) => {
       if (!recording) return;
       setHistory((h) => h.map((m, i) => (i === turnIndex ? { ...m, audioUrl: recording.url } : m)));
+      callPronunciationAPI(recording.blob, turnIndex, buffered.pronunciation.wpm ?? 0, buffered.text);
     });
   };
 

@@ -40,12 +40,18 @@ export async function POST(req: Request) {
   const audio = formData.get("audio") as Blob | null;
   const langCode = (formData.get("language") as string | null) ?? "fr";
   const dgWpm = parseInt((formData.get("wpm") as string | null) ?? "0", 10);
+  // Optional: when the caller provides the ASR transcript, we use it as the
+  // pronunciation reference (EnableMiscue:true). This is the two-pass mode:
+  // Azure SDK provides the transcript, then we score against it — NOT circular
+  // because Azure's ASR normalises phoneme patterns (e.g. it writes "the" even
+  // when the learner said /z/, so the reference correctly exposes the error).
+  const referenceText = (formData.get("referenceText") as string | null) ?? "";
 
   if (!audio || audio.size === 0) {
     return new Response("No audio", { status: 400 });
   }
 
-  console.log(`[pronunciation] blob=${audio.size}B type=${audio.type} lang=${langCode} wpm=${dgWpm}`);
+  console.log(`[pronunciation] blob=${audio.size}B type=${audio.type} lang=${langCode} wpm=${dgWpm} ref="${referenceText.slice(0, 40)}${referenceText.length > 40 ? "…" : ""}"`);
 
   const langMap: Record<string, string> = {
     fr: "fr-FR",
@@ -53,24 +59,22 @@ export async function POST(req: Request) {
     "nl-BE": "nl-BE",
   };
 
-  // Free-speech mode: Azure runs its own phonemic transcription, then scores the
-  // user's phonemes against the expected phonemes for the words it recognised.
+  // Two-pass mode (referenceText provided): use Azure's own ASR transcript as the
+  // reference so we score the learner's actual phonemes against what those words
+  // should sound like. EnableMiscue:true catches omissions and insertions.
   //
-  // Why NOT use Deepgram's transcript as ReferenceText + EnableMiscue:
-  //   Deepgram is a transcription model optimised for ASR accuracy. When a learner
-  //   says "ze" (mispronouncing "the"), Deepgram often outputs "ze" — it transcribes
-  //   what it hears. Using that as the reference means Azure scores "ze" against "ze"
-  //   → perfect score. The circular reference defeats the whole system.
+  // This is NOT the circular-reference problem that Deepgram had: Deepgram wrote
+  // "ze" when the learner said /z/ for "the", so the reference matched the error.
+  // Azure's ASR normalises to "the" even for /z/ input, so the reference correctly
+  // exposes the substitution.
   //
-  // In free-speech mode, Azure's pronunciation-assessment LM is specifically trained
-  // for L2 phoneme detection. It is more likely to normalise "ze" → "the" and then
-  // score the user's /z/ phoneme against the expected /ð/ → Mispronunciation flagged.
-  const pronConfigJson = JSON.stringify({
-    ReferenceText: "",
-    GradingSystem: "HundredMark",
-    Granularity: "Phoneme",
-    EnableMiscue: false,
-  });
+  // Free-speech fallback (no referenceText): Azure uses its own phoneme transcription
+  // to score — less accurate but still useful when no reference is available.
+  const pronConfigJson = JSON.stringify(
+    referenceText
+      ? { ReferenceText: referenceText, GradingSystem: "HundredMark", Granularity: "Phoneme", EnableMiscue: true }
+      : { ReferenceText: "",            GradingSystem: "HundredMark", Granularity: "Phoneme", EnableMiscue: false }
+  );
   const pronConfigB64 = Buffer.from(pronConfigJson).toString("base64");
 
   // Normalise Content-Type: Azure is strict about the exact string.
