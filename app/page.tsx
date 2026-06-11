@@ -872,13 +872,6 @@ export default function Home() {
             </>
           ) : (
             <>
-              <button
-                onClick={() => sttRef.current?.forceDispatch()}
-                title="End your turn immediately without waiting for the silence timeout"
-                style={btn("#0ea5e9")}
-              >
-                ✓ Done speaking
-              </button>
               <button onClick={runEvaluation} disabled={evaluating} style={btn("#10b981")}>
                 {evaluating ? "Évaluation…" : "Évaluer (Claude)"}
               </button>
