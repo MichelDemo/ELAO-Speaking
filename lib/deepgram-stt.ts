@@ -83,13 +83,17 @@ export class DeepgramSTT {
       `&smart_format=true` +
       `&encoding=linear16` +
       `&sample_rate=16000` +
-      // 2000 ms silence before speech_final fires. Non-native speakers regularly
-      // pause 1–1.5 s mid-sentence while searching for a word — anything shorter
-      // cuts them off. A manual "Done" button in the UI lets users end their turn
-      // immediately if they prefer not to wait for the VAD timeout.
-      `&endpointing=2000` +
-      // UtteranceEnd fires after 4000 ms of silence as a last-resort fallback.
-      `&utterance_end_ms=4000`;
+      // 3500 ms silence before speech_final fires.
+      // Language learners (CEFR A2–B2) commonly pause 2–3 s mid-sentence
+      // while searching for a word. 2000 ms fired too early and cut them off.
+      // The "✓ Done speaking" button lets users end their turn immediately
+      // without waiting for the full silence window.
+      `&endpointing=3500` +
+      // UtteranceEnd fires after 6000 ms as a last-resort fallback.
+      // Must be longer than endpointing so speech_final always fires first
+      // in normal conditions; UtteranceEnd only triggers in noisy environments
+      // where the VAD can't detect clean silence.
+      `&utterance_end_ms=6000`;
 
     // Deepgram's supported browser auth: API key as WebSocket subprotocol
     this.ws = new WebSocket(url, ["token", key]);
@@ -185,18 +189,34 @@ export class DeepgramSTT {
         if (data.speech_final) {
           this.dispatchUtterance();
         } else {
-          // Set a 3.5 s fallback: if speech_final never arrives (e.g. noisy environment),
-          // dispatch anyway so the conversation doesn't get stuck. 3.5 s is long enough
-          // that it never fires on mid-sentence pauses but still prevents the
-          // conversation from hanging indefinitely.
+          // Set a 5 s fallback: if speech_final never arrives (e.g. noisy environment
+          // where VAD can't detect clean silence), dispatch anyway so the conversation
+          // doesn't get stuck. 5 s > endpointing (3500 ms) so in normal conditions
+          // speech_final always fires first; this timer is truly a last resort.
           if (this.utteranceTimer) clearTimeout(this.utteranceTimer);
           this.utteranceTimer = setTimeout(() => {
             this.utteranceTimer = null;
             this.dispatchUtterance();
-          }, 3500);
+          }, 5000);
         }
       } else {
-        // Partial: show accumulated confirmed text + live partial for live caption.
+        // Partial (is_final=false) — the user is actively speaking.
+        // ROOT-CAUSE FIX: reset the fallback timer whenever a partial arrives
+        // while a timer is already running. Without this, the following sequence
+        // cuts the user off mid-sentence:
+        //   1. is_final fires at a clause boundary → 5 s timer starts
+        //   2. User continues speaking → Deepgram sends only partials (not is_final)
+        //   3. Timer is never reset → fires after 5 s → dispatch while user still talks
+        // Resetting the timer here pushes the deadline forward as long as
+        // Deepgram keeps receiving speech, which it will until the user stops.
+        if (this.utteranceTimer) {
+          clearTimeout(this.utteranceTimer);
+          this.utteranceTimer = setTimeout(() => {
+            this.utteranceTimer = null;
+            this.dispatchUtterance();
+          }, 5000);
+        }
+        // Show accumulated confirmed text + live partial for live caption.
         const display = this.pendingTranscript
           ? this.pendingTranscript + " " + transcript
           : transcript;
