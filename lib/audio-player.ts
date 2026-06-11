@@ -1,10 +1,18 @@
 /**
  * Player audio pour les chunks PCM 16-bit 24kHz reçus de Deepgram Aura via SSE.
  * Gère une queue : on enchaîne les chunks au fur et à mesure qu'ils arrivent.
+ *
+ * Session recording: every TTS chunk is routed to both the speakers
+ * (ctx.destination) AND a MediaStreamDestinationNode (recordingDest).
+ * Call addMicStream() to also route the user's mic into recordingDest,
+ * then getRecordingStream() to hand the combined (TTS + mic) stream to
+ * SessionRecorder. This produces a full-session recording of both sides.
  */
 
 export class StreamingAudioPlayer {
   private audioContext: AudioContext | null = null;
+  /** Receives both TTS chunks and mic audio for the session recording. */
+  private recordingDest: MediaStreamAudioDestinationNode | null = null;
   private nextStartTime = 0;
   private isPlaying = false;
   private onAmplitudeChange?: (amp: number) => void;
@@ -28,6 +36,7 @@ export class StreamingAudioPlayer {
       // Forcing 24000 Hz on hardware running at a different rate causes the OS
       // to resample at the driver level, which introduces quantisation noise.
       this.audioContext = new AudioContext();
+      this.recordingDest = this.audioContext.createMediaStreamDestination();
       this.nextStartTime = this.audioContext.currentTime;
     }
     // Call resume() fire-and-forget. Scheduled sources are queued by the Web
@@ -39,6 +48,31 @@ export class StreamingAudioPlayer {
       this.audioContext.resume();
     }
     return this.audioContext;
+  }
+
+  /**
+   * Route a microphone MediaStream into the recording destination.
+   * The mic audio goes to recordingDest only — NOT to ctx.destination —
+   * so it is captured in the session recording without feeding back to speakers.
+   * Call once after Deepgram starts (which provides the mic stream).
+   */
+  addMicStream(micStream: MediaStream) {
+    const ctx = this.ensureContext();
+    if (!this.recordingDest) return;
+    const source = ctx.createMediaStreamSource(micStream);
+    // Slight gain boost so mic voice sits at roughly the same level as TTS.
+    const gain = ctx.createGain();
+    gain.gain.value = 1.4;
+    source.connect(gain);
+    gain.connect(this.recordingDest);
+  }
+
+  /**
+   * Returns the combined TTS + mic stream for use by SessionRecorder.
+   * Available after init() has been called.
+   */
+  getRecordingStream(): MediaStream | null {
+    return this.recordingDest?.stream ?? null;
   }
 
   /**
@@ -80,7 +114,9 @@ export class StreamingAudioPlayer {
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
+    // Route to speakers AND the session recording destination.
     source.connect(ctx.destination);
+    if (this.recordingDest) source.connect(this.recordingDest);
 
     // If we've fallen behind real-time (e.g. a hiccup), add a 20 ms lookahead
     // so the audio engine has time to prepare the buffer before playback.
@@ -101,6 +137,7 @@ export class StreamingAudioPlayer {
   stop() {
     this.audioContext?.close();
     this.audioContext = null;
+    this.recordingDest = null;
     this.nextStartTime = 0;
     this.isPlaying = false;
   }

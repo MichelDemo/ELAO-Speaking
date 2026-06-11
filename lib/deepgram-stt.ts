@@ -222,7 +222,18 @@ export class DeepgramSTT {
   }
 
   private async startAudio() {
-    this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    // autoGainControl: false — AGC compresses volume dynamics, masking the
+    // phoneme-onset differences that Azure Pronunciation Assessment relies on.
+    // echoCancellation: keep on so the avatar TTS doesn't leak into the mic.
+    // noiseSuppression: keep on for real-world environments.
+    this.mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        autoGainControl: false,
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
+      video: false,
+    });
     this.audioContext = new AudioContext({ sampleRate: 16000 });
 
     const source = this.audioContext.createMediaStreamSource(this.mediaStream);

@@ -503,7 +503,7 @@ export default function Home() {
     try {
       turnMimeRef.current = mimeType;
       turnChunksRef.current = [];
-      const mr = new MediaRecorder(stream, { mimeType });
+      const mr = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 128_000 });
       mr.ondataavailable = (e) => { if (e.data.size > 0) turnChunksRef.current.push(e.data); };
       mr.onerror = (e) => console.error("TurnRecorder error:", e);
       mr.start(500); // collect chunks every 500 ms
@@ -560,9 +560,13 @@ export default function Home() {
     setSessionStarted(true);
     sessionSavedRef.current = false;
     startedAtRef.current = Date.now();
-    recorderRef.current = new SessionRecorder();
-    recorderRef.current.start();
+
     if (!USE_HEYGEN) {
+      // Create player and unlock AudioContext NOW — must be synchronous and
+      // inside the click handler before any await, otherwise Chrome's autoplay
+      // policy will block the AudioContext when the first TTS chunk arrives.
+      // The MediaStreamDestinationNode (for session recording) is also created
+      // here so it's ready when we connect the mic stream after Deepgram starts.
       playerRef.current = new StreamingAudioPlayer((amp) => {
         const wasSpeaking = isSpeakingRef.current;
         isSpeakingRef.current = amp > 0;
@@ -574,9 +578,6 @@ export default function Home() {
           processBufferedRef.current();
         }
       });
-      // Unlock the AudioContext now, while we are still inside the click handler
-      // (before any await). Chrome's autoplay policy can block resume() called
-      // from async continuations that are far from the original user gesture.
       playerRef.current.init();
     }
 
@@ -653,9 +654,23 @@ export default function Home() {
     try {
       await sttRef.current.start();
       startTurnRecording(); // begin recording the first turn on Deepgram's mic stream
+
+      if (!USE_HEYGEN && playerRef.current) {
+        // Route mic into the player's MediaStreamDestinationNode so the session
+        // recording captures both sides: avatar TTS + user voice.
+        const micStream = sttRef.current.getStream();
+        if (micStream) playerRef.current.addMicStream(micStream);
+        const combinedStream = playerRef.current.getRecordingStream();
+        recorderRef.current = new SessionRecorder(combinedStream ?? undefined);
+      } else {
+        // HeyGen mode or STT fallback: mic-only session recording.
+        recorderRef.current = new SessionRecorder();
+      }
     } catch (e) {
       console.error("Deepgram STT failed to start:", e);
+      recorderRef.current = new SessionRecorder(); // mic-only fallback
     }
+    recorderRef.current.start();
 
     // Kick off the conversation regardless of STT status
     await handleUserTurn("__START__");
@@ -800,10 +815,13 @@ export default function Home() {
     }
     await stopTurnRecording(); // must come before sttRef.stop() which kills the mic stream
     sttRef.current?.stop();
-    if (!USE_HEYGEN) playerRef.current?.stop();
-    // Recorder may already have been stopped by runEvaluation — stop() is safe
-    // to call twice (returns null when MediaRecorder is already inactive).
+    // Stop session recorder BEFORE closing the player's AudioContext.
+    // The combined stream is sourced from the player's MediaStreamDestinationNode —
+    // closing the AudioContext first cuts the stream before the recorder can flush
+    // its final buffered chunk. stop() is safe to call twice (returns null if
+    // the MediaRecorder was already stopped by runEvaluation).
     const freshBlob = await recorderRef.current?.stop() ?? null;
+    if (!USE_HEYGEN) playerRef.current?.stop();
     await saveSession(freshBlob ?? audioBlob, cefrResult ?? undefined);
     setSessionStarted(false);
   };

@@ -1,32 +1,36 @@
 /**
- * Records the microphone for the duration of a session.
- * Returns a Blob (webm/opus) on stop().
- * Runs independently of Deepgram and Azure — all three can access the
- * mic simultaneously via separate getUserMedia streams.
+ * Records the full session (avatar TTS + user mic) for listen-back.
  *
- * Quality choices:
- * - echoCancellation / noiseSuppression / autoGainControl all OFF:
- *   these DSP processes distort natural speech and reduce listen-back
- *   quality. The STT engines open their own streams with default
- *   (processed) audio, so transcription is unaffected.
- * - 48 kHz mono: browser maximum; Opus at 128 kbps gives broadcast-
- *   quality speech (vs. ~32 kbps default which sounds narrow).
+ * Two modes:
+ *   new SessionRecorder(combinedStream) — uses the pre-mixed MediaStream
+ *     produced by StreamingAudioPlayer.getRecordingStream(). This is the
+ *     normal path: both sides of the conversation are captured.
+ *   new SessionRecorder() — opens its own getUserMedia as a fallback
+ *     (HeyGen mode, or if Deepgram fails to start). Mic-only.
+ *
+ * Quality: Opus at 128 kbps. No DSP constraints on the combined stream
+ * (echo cancellation / AGC are applied upstream by the mic's getUserMedia).
  */
 export class SessionRecorder {
   private mediaRecorder: MediaRecorder | null = null;
   private chunks: Blob[] = [];
   private stream: MediaStream | null = null;
+  /** True when the stream was provided externally (don't stop its tracks on stop). */
+  private externalStream: boolean;
+
+  constructor(providedStream?: MediaStream) {
+    this.stream = providedStream ?? null;
+    this.externalStream = !!providedStream;
+  }
 
   async start(): Promise<void> {
     try {
-      // Use plain audio: true so the recorder's getUserMedia doesn't
-      // conflict with Deepgram and Azure, which open their own streams
-      // simultaneously. Browsers (especially Chrome) share audio
-      // processing state across tracks from the same device — mixing
-      // explicit constraints (sampleRate, echoCancellation) across
-      // concurrent streams can cause one of them to fail silently.
-      // The quality gain comes from the bitrate below, not the constraints.
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      if (!this.stream) {
+        // Fallback: open a plain mic-only stream.
+        // Use audio:true without extra constraints to avoid conflicts with
+        // Deepgram's concurrent getUserMedia in the same browser context.
+        this.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      }
 
       // Prefer Opus (best quality/size ratio for speech).
       // Fall back gracefully on browsers that don't support webm.
@@ -54,13 +58,18 @@ export class SessionRecorder {
   stop(): Promise<Blob | null> {
     return new Promise((resolve) => {
       if (!this.mediaRecorder || this.mediaRecorder.state === "inactive") {
-        this.stream?.getTracks().forEach((t) => t.stop());
+        // Only stop tracks we own (not tracks managed by AudioContext or Deepgram).
+        if (!this.externalStream) {
+          this.stream?.getTracks().forEach((t) => t.stop());
+        }
         resolve(null);
         return;
       }
       this.mediaRecorder.onstop = () => {
         const blob = new Blob(this.chunks, { type: this.mediaRecorder!.mimeType });
-        this.stream?.getTracks().forEach((t) => t.stop());
+        if (!this.externalStream) {
+          this.stream?.getTracks().forEach((t) => t.stop());
+        }
         resolve(blob.size > 0 ? blob : null);
       };
       this.mediaRecorder.stop();
