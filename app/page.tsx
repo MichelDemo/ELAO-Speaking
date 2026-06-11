@@ -613,14 +613,21 @@ export default function Home() {
       onError: (e) => console.error("Azure STT error:", e),
     });
 
-    // Open a dedicated mic stream for per-turn recording.
-    // AzureSTT manages its own internal getUserMedia — this stream is MediaRecorder-only,
-    // so there is no AudioContext conflict of any kind.
+    // Open a dedicated mic stream for per-turn recording AND session listen-back.
+    // AzureSTT manages its own internal getUserMedia — this stream is used only by
+    // MediaRecorder and the player's AudioContext (for mixing), so there is no
+    // dual-AudioContext conflict of any kind.
     try {
       micStreamRef.current = await navigator.mediaDevices.getUserMedia({
         audio: { autoGainControl: true, echoCancellation: true, noiseSuppression: true },
         video: false,
       });
+      // Mix the mic into the player's session-recording destination so the
+      // listen-back audio captures both sides (avatar TTS + user voice).
+      // Safe now that AzureSTT owns a completely separate internal stream.
+      if (!USE_HEYGEN && playerRef.current) {
+        playerRef.current.addMicStream(micStreamRef.current);
+      }
     } catch (e) {
       console.warn("Mic stream for recording unavailable:", e);
     }
@@ -631,7 +638,7 @@ export default function Home() {
       startTurnRecording(); // begin recording the first user turn
 
       if (!USE_HEYGEN && playerRef.current) {
-        // Session recording: TTS audio via the player's recordingDest.
+        // Session recording: TTS + mic audio mixed via the player's recordingDest.
         const ttsStream = playerRef.current.getRecordingStream();
         recorderRef.current = new SessionRecorder(ttsStream ?? (micStreamRef.current ?? undefined));
       } else {
@@ -804,6 +811,12 @@ export default function Home() {
     // the MediaRecorder was already stopped by runEvaluation).
     const freshBlob = await recorderRef.current?.stop() ?? null;
     if (!USE_HEYGEN) playerRef.current?.stop();
+    // Show the listen-back player even when stopping without evaluating.
+    if (freshBlob && freshBlob.size > 0) {
+      if (audioBlobUrlRef.current) URL.revokeObjectURL(audioBlobUrlRef.current);
+      audioBlobUrlRef.current = URL.createObjectURL(freshBlob);
+      setAudioBlob(freshBlob);
+    }
     await saveSession(freshBlob ?? audioBlob, cefrResult ?? undefined);
     setSessionStarted(false);
   };
