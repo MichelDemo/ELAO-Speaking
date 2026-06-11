@@ -182,11 +182,12 @@ function CefrPanel({ result, azureAvg }: { result: CefrResult; azureAvg: AzureAv
   const vocabGram  = result.dimensions.vocabulary_grammar;
   const comm       = result.dimensions.communication;
 
-  // Composite global score: equal weight across all 4 components (0-100)
-  const components = [pronScore, fluency, vocabGram, comm].filter((v): v is number => v !== null);
-  const compositeScore = components.length
-    ? Math.round(components.reduce((a, b) => a + b, 0) / components.length * 10)
-    : result.score_percent;
+  // Use Claude's score and level directly — the evaluator already accounts for all
+  // dimensions holistically. The local dimension average can diverge when pronunciation
+  // is deflated by deflateAzure(), causing the displayed level to disagree with the
+  // score (e.g. score 86 showing as C1 instead of C1+).
+  const compositeScore = result.score_percent;
+  const compositeLevel = result.level ?? scoreToLevel(compositeScore);
 
   const dim4: [string, number | null][] = [
     ["Pronunciation", pronScore],
@@ -209,7 +210,7 @@ function CefrPanel({ result, azureAvg }: { result: CefrResult; azureAvg: AzureAv
           <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", fontWeight: 700, letterSpacing: 1 }}>
             ORAL ASSESSMENT
           </div>
-          <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1.1 }}>{scoreToLevel(compositeScore)}</div>
+          <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1.1 }}>{compositeLevel}</div>
           <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>
             Score {compositeScore}/100
           </div>
