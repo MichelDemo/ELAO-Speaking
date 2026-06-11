@@ -187,7 +187,36 @@ export class DeepgramSTT {
         this.pendingWords.push(...(alt.words ?? []));
 
         if (data.speech_final) {
-          this.dispatchUtterance();
+          // Don't dispatch blindly — check whether the transcript looks like a
+          // finished utterance before committing.
+          //
+          // With punctuate=true + smart_format=true, Deepgram adds terminal
+          // punctuation (. ! ?) to complete sentences and leaves fragments
+          // unpunctuated. "Je voudrais" → no period → fragment, wait.
+          // "Je comprends." → period → complete, dispatch now.
+          //
+          // Word-count fallback (≥ 6): a long phrase without punctuation is
+          // almost certainly a complete thought regardless of Deepgram's
+          // punctuation model (e.g. proper nouns, code-switching, accents).
+          const text = this.pendingTranscript.trim();
+          const hasTerminalPunct = /[.!?]$/.test(text);
+          const wordCount = text.split(/\s+/).filter(Boolean).length;
+
+          if (hasTerminalPunct || wordCount >= 6) {
+            // Looks complete — dispatch immediately.
+            this.dispatchUtterance();
+          } else {
+            // Fragment (short, no terminal punctuation) — learner likely paused
+            // mid-sentence. Set a grace timer; UtteranceEnd (6 s from stop)
+            // will fire first in normal conditions and dispatch via the handler
+            // above. The grace timer (4 s from now = ~7.5 s from user stopping)
+            // is only a safety net if UtteranceEnd doesn't fire.
+            if (this.utteranceTimer) clearTimeout(this.utteranceTimer);
+            this.utteranceTimer = setTimeout(() => {
+              this.utteranceTimer = null;
+              this.dispatchUtterance();
+            }, 4000);
+          }
         } else {
           // Set a 5 s fallback: if speech_final never arrives (e.g. noisy environment
           // where VAD can't detect clean silence), dispatch anyway so the conversation
@@ -242,13 +271,16 @@ export class DeepgramSTT {
   }
 
   private async startAudio() {
-    // autoGainControl: false — AGC compresses volume dynamics, masking the
-    // phoneme-onset differences that Azure Pronunciation Assessment relies on.
-    // echoCancellation: keep on so the avatar TTS doesn't leak into the mic.
-    // noiseSuppression: keep on for real-world environments.
+    // autoGainControl: true (browser default — deliberately restored).
+    // AGC normalises the mic level so Deepgram's VAD always sees a consistent
+    // amplitude envelope. With AGC off, natural voice dynamics (trailing
+    // syllables, soft mid-word dips) can fall below the VAD threshold and make
+    // Deepgram misdetect silence mid-sentence — triggering speech_final early
+    // regardless of the endpointing timeout. The gain for Azure pronunciation
+    // accuracy from disabling AGC is marginal compared to the conversation cost.
     this.mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
-        autoGainControl: false,
+        autoGainControl: true,
         echoCancellation: true,
         noiseSuppression: true,
       },
