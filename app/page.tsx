@@ -541,12 +541,16 @@ export default function Home() {
     turnIndex: number,
     wpm: number,
     referenceText: string,
+    context: string,
   ) => {
     const form = new FormData();
     form.append("audio", blob, "turn.webm");
     form.append("language", language);
     form.append("wpm", String(wpm));
     form.append("referenceText", referenceText);
+    // The examiner's question this turn answers — used server-side by the LLM
+    // correction step to reconstruct what the learner intended to say.
+    form.append("context", context);
     fetch("/api/pronunciation", { method: "POST", body: form })
       .then((r) => r.json())
       .then((result: PronunciationResult | null) => {
@@ -646,15 +650,20 @@ export default function Home() {
           }
         }
 
+        // The examiner's question this turn answers — captured BEFORE
+        // handleUserTurn appends the avatar's next reply to history.
+        const questionContext =
+          [...historyRef.current].reverse().find((m) => m.role === "assistant")?.content ?? "";
+
         await handleUserTurn(text, pronunciation);
 
         // Attach audio URL + kick off accurate REST pronunciation assessment.
-        // Pass 1 (SDK scores) is already shown; pass 2 overwrites with more
-        // accurate scores using Azure's own transcript as the reference.
+        // Pass 1 (SDK scores) is already shown; pass 2 overwrites with scores
+        // computed against the LLM-corrected intended text.
         recordingPromise.then((recording) => {
           if (!recording) return;
           setHistory((h) => h.map((m, i) => (i === turnIndex ? { ...m, audioUrl: recording.url } : m)));
-          callPronunciationAPI(recording.blob, turnIndex, azurePron.wpm, text);
+          callPronunciationAPI(recording.blob, turnIndex, azurePron.wpm, text, questionContext);
         });
 
         if (shouldEnd) await handleUserTurn("__END__");
@@ -805,11 +814,14 @@ export default function Home() {
     const turnIndex = historyRef.current.length;
     const recordingPromise = stopTurnRecording();
     startTurnRecording();
+    // Examiner's question — captured before handleUserTurn appends the reply.
+    const questionContext =
+      [...historyRef.current].reverse().find((m) => m.role === "assistant")?.content ?? "";
     await handleUserTurn(buffered.text, buffered.pronunciation);
     recordingPromise.then((recording) => {
       if (!recording) return;
       setHistory((h) => h.map((m, i) => (i === turnIndex ? { ...m, audioUrl: recording.url } : m)));
-      callPronunciationAPI(recording.blob, turnIndex, buffered.pronunciation.wpm ?? 0, buffered.text);
+      callPronunciationAPI(recording.blob, turnIndex, buffered.pronunciation.wpm ?? 0, buffered.text, questionContext);
     });
   };
 
