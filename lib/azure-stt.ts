@@ -114,7 +114,8 @@ export class AzureSTT {
             const phonemes = word.Phonemes ?? [];
             const accuracy = wordAccuracy(
               accuracyScore,
-              phonemes.map((p) => p.PronunciationAssessment?.AccuracyScore ?? 100)
+              phonemes.map((p) => p.PronunciationAssessment?.AccuracyScore ?? 100),
+              errorType
             );
             return {
               word: word.Word ?? "",

@@ -567,6 +567,26 @@ export default function Home() {
     sessionSavedRef.current = false;
     startedAtRef.current = Date.now();
 
+    // Reset ALL per-session state from any previous run. Without this, a stale
+    // cefrResult from the last evaluation keeps the pronunciation panel and
+    // coloured transcript words visible during the entire new session (every
+    // `cefrResult &&` display gate passes from the first second).
+    setCefrResult(null);
+    setHistory([]);
+    // historyRef is normally synced on render — but handleUserTurn("__START__")
+    // below runs before the next render, so clear the ref directly or the new
+    // session's first /api/chat call would include the previous transcript.
+    historyRef.current = [];
+    setPartialUser("");
+    setStreamingAssistant("");
+    setElapsed(0);
+    bufferedTurnsRef.current = [];
+    if (audioBlobUrlRef.current) {
+      URL.revokeObjectURL(audioBlobUrlRef.current);
+      audioBlobUrlRef.current = null;
+    }
+    setAudioBlob(null);
+
     if (!USE_HEYGEN) {
       // Create player and unlock AudioContext NOW — must be synchronous and
       // inside the click handler before any await, otherwise Chrome's autoplay

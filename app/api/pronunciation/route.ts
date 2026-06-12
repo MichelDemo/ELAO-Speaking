@@ -118,7 +118,8 @@ export async function POST(req: Request) {
     // displayed scores to a different scale when it overwrites them.
     const accuracy = wordAccuracy(
       acc,
-      phonemes.map((p) => p.PronunciationAssessment?.AccuracyScore ?? 100)
+      phonemes.map((p) => p.PronunciationAssessment?.AccuracyScore ?? 100),
+      errType
     );
     return {
       word: w.Word ?? "",
