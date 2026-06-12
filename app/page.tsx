@@ -436,12 +436,12 @@ export default function Home() {
     return () => clearInterval(id);
   }, [sessionStarted]);
 
-  // Auto-evaluate and close conversation at 4 min.
+  // Auto-evaluate and close conversation at 3 min.
   // Don't interrupt mid-sentence: set a flag so onFinal triggers __END__
   // after the user finishes speaking. Safety timeout fires after 20 s in
   // case the user is already silent.
   useEffect(() => {
-    if (elapsed === 240 && !cefrResult && !evaluating) {
+    if (elapsed === 180 && !cefrResult && !evaluating) {
       runEvaluation();
       pendingEndRef.current = true;
       endTimeoutRef.current = setTimeout(() => {
@@ -902,8 +902,8 @@ export default function Home() {
         <h1 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>CEFR Pronunciation POC</h1>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           {sessionStarted && (
-            <span style={{ fontFamily: "monospace", fontSize: 13, color: elapsed >= 300 ? "#4ade80" : "#94a3b8" }}>
-              {mm}:{ss} {elapsed >= 300 ? "✓" : ""}
+            <span style={{ fontFamily: "monospace", fontSize: 13, color: elapsed >= 180 ? "#4ade80" : "#94a3b8" }}>
+              {mm}:{ss} {elapsed >= 180 ? "✓" : ""}
             </span>
           )}
           {!sessionStarted ? (
