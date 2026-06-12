@@ -120,15 +120,15 @@ export async function POST(req: Request) {
   );
   const pronConfigB64 = Buffer.from(pronConfigJson).toString("base64");
 
-  // Normalise Content-Type: Azure is strict about the exact string.
-  // audio/webm;codecs=opus → audio/webm;codecs=opus  (Chrome)
-  // audio/mp4             → audio/mp4               (Safari)
-  // Anything else         → audio/webm               (safe fallback)
+  // Normalise Content-Type: Azure's short-audio REST endpoint officially
+  // supports WAV/PCM and OGG/OPUS. The client converts MediaRecorder output to
+  // WAV 16 kHz mono before upload (lib/audio-wav.ts) — webm passthrough remains
+  // only as a fallback when browser-side decoding failed.
   const rawType = audio.type ?? "";
-  const contentType = rawType.startsWith("audio/mp4")
+  const contentType = rawType.includes("wav")
+    ? "audio/wav; codecs=audio/pcm; samplerate=16000"
+    : rawType.startsWith("audio/mp4")
     ? "audio/mp4"
-    : rawType.includes("webm")
-    ? "audio/webm;codecs=opus"
     : "audio/webm;codecs=opus";
 
   const azureRes = await fetch(
@@ -148,7 +148,11 @@ export async function POST(req: Request) {
   if (!azureRes.ok) {
     const errText = await azureRes.text();
     console.error("Azure pronunciation REST error:", azureRes.status, errText);
-    return new Response(`Azure error: ${azureRes.status}`, { status: 502 });
+    // JSON body so the client can read the error without r.json() throwing.
+    return Response.json(
+      { error: `Azure ${azureRes.status}`, detail: errText.slice(0, 200) },
+      { status: 502 }
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

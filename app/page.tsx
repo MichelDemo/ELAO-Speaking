@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { AzureSTT, type PronunciationResult, type WordScore } from "@/lib/azure-stt";
 import { StreamingAudioPlayer } from "@/lib/audio-player";
 import { SessionRecorder } from "@/lib/session-recorder";
+import { blobToWav16kMono } from "@/lib/audio-wav";
 import { getSupabase } from "@/lib/supabase";
 import type { LiveAvatarHandle } from "@/components/LiveAvatar";
 
@@ -529,40 +530,65 @@ export default function Home() {
     });
   };
 
-  // ── two-pass pronunciation: REST API with Azure transcript as reference ──────
-  // Pass 1: AzureSTT SDK scores are shown immediately (source:"azure").
-  // Pass 2 (this function): sends the recorded audio + Azure's own transcript to
-  //   /api/pronunciation. With EnableMiscue:true and ReferenceText set, Azure
-  //   compares actual phonemes against the expected phonemes for those words —
-  //   catching substitutions (ze→the), omissions, and insertions.
-  //   Result overwrites the SDK scores in-place; the badge stays "AZ".
-  const callPronunciationAPI = (
+  // ── two-pass pronunciation: REST API with LLM-corrected reference ───────────
+  // Pass 1: AzureSTT SDK scores (free-speech mode — lenient, near-100 for any
+  //   recognized word) are attached immediately as placeholders.
+  // Pass 2 (this function): converts the turn recording to WAV 16 kHz mono
+  //   (Azure's REST endpoint rejects Chrome's webm container — the silent
+  //   failure that left pass-1's ~100 scores on screen), then sends it with the
+  //   transcript + examiner question. The server has Claude reconstruct the
+  //   INTENDED text and Azure scores actual phonemes against it
+  //   (EnableMiscue:true) — catching substitutions, omissions, insertions.
+  //   Result overwrites the pass-1 scores in place.
+  const callPronunciationAPI = async (
     blob: Blob,
     turnIndex: number,
     wpm: number,
     referenceText: string,
     context: string,
   ) => {
+    let audio = blob;
+    let filename = "turn.webm";
+    try {
+      audio = await blobToWav16kMono(blob);
+      filename = "turn.wav";
+    } catch (e) {
+      // Decode failure — send the original container and let the server try.
+      console.warn("[pronunciation] WAV conversion failed, sending raw blob:", e);
+    }
+
     const form = new FormData();
-    form.append("audio", blob, "turn.webm");
+    form.append("audio", audio, filename);
     form.append("language", language);
     form.append("wpm", String(wpm));
     form.append("referenceText", referenceText);
     // The examiner's question this turn answers — used server-side by the LLM
     // correction step to reconstruct what the learner intended to say.
     form.append("context", context);
-    fetch("/api/pronunciation", { method: "POST", body: form })
-      .then((r) => r.json())
-      .then((result: PronunciationResult | null) => {
-        if (!result) return;
-        setHistory((h) =>
-          h.map((m, i) => {
-            if (i !== turnIndex || m.role !== "user" || !m.pronunciation) return m;
-            return { ...m, pronunciation: { ...result, source: "azure" } };
-          })
-        );
-      })
-      .catch((e) => console.error("Pronunciation REST error:", e));
+
+    try {
+      const r = await fetch("/api/pronunciation", { method: "POST", body: form });
+      if (!r.ok) {
+        // Loud failure: a dead pass 2 means the lenient pass-1 scores stay on
+        // screen — exactly the "everything is 100%" bug. Never fail silently.
+        console.error(`[pronunciation] pass-2 HTTP ${r.status}: ${await r.text()}`);
+        return;
+      }
+      const result = (await r.json()) as PronunciationResult | null;
+      if (!result) {
+        console.warn("[pronunciation] pass-2 returned no result (Azure no-speech)");
+        return;
+      }
+      console.log(`[pronunciation] pass-2 OK turn=${turnIndex} score=${result.pronunciationScore}`);
+      setHistory((h) =>
+        h.map((m, i) => {
+          if (i !== turnIndex || m.role !== "user" || !m.pronunciation) return m;
+          return { ...m, pronunciation: { ...result, source: "azure" } };
+        })
+      );
+    } catch (e) {
+      console.error("[pronunciation] pass-2 request failed:", e);
+    }
   };
 
   // ── session ──

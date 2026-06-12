@@ -48,19 +48,28 @@ interface RecognizerHandle {
 /**
  * How long the SDK waits in silence before closing a speech segment.
  * Default (~650 ms) is tuned for fluent native speakers; CEFR learners pause
- * 2-3 s mid-sentence searching for words, so 650 ms chops their sentences
- * apart and the avatar answers half a thought. 2200 ms tolerates word-finding
- * pauses. (SDK valid range: 100-5000.)
+ * mid-sentence searching for words, so 650 ms chops their sentences apart.
+ * 1500 ms is safe because segment closure no longer dispatches — the
+ * punctuation-aware debounce below decides when the turn actually ends.
+ * (SDK valid range: 100-5000.)
  */
-const SEGMENTATION_SILENCE_MS = "2200";
+const SEGMENTATION_SILENCE_MS = "1500";
 
 /**
- * After a segment is recognized, wait this long before treating the turn as
- * finished. If the user resumes speaking (a `recognizing` partial arrives),
- * the timer is cancelled and the next segment merges into the same turn.
- * Total silence before the avatar replies ≈ SEGMENTATION_SILENCE_MS + this.
+ * Punctuation-aware dispatch debounce. After a segment is recognized, wait
+ * before treating the turn as finished; a `recognizing` partial cancels the
+ * timer and the next segment merges into the same turn.
+ *
+ * Azure punctuates recognized text: a finished sentence gets terminal
+ * punctuation (. ! ?), a mid-thought fragment usually doesn't. Use that:
+ *   - Complete sentence  → short wait. Total silence ≈ 1500 + 900 = 2.4 s
+ *     (was a flat 3.8 s — the "system takes too long to respond" complaint).
+ *   - Incomplete fragment → long wait. Total ≈ 1500 + 2500 = 4.0 s, MORE
+ *     mid-sentence protection than the old flat timing.
+ * Worst case equals the old behaviour; the common case is 1.4 s faster.
  */
-const DISPATCH_DEBOUNCE_MS = 1600;
+const DEBOUNCE_COMPLETE_MS = 900;
+const DEBOUNCE_INCOMPLETE_MS = 2500;
 
 export class AzureSTT {
   private recognizer: RecognizerHandle | null = null;
@@ -200,20 +209,24 @@ export class AzureSTT {
 
         // Accumulate the segment instead of dispatching immediately. The SDK
         // closes a segment after SEGMENTATION_SILENCE_MS of silence, but a
-        // learner may just be pausing — only after DISPATCH_DEBOUNCE_MS with
-        // no new speech do we treat the turn as finished. A `recognizing`
-        // partial cancels the timer and merges the next segment in.
+        // learner may just be pausing — dispatch only after a debounce with
+        // no new speech. A `recognizing` partial cancels the timer and merges
+        // the next segment in.
         this.pendingText = this.pendingText
           ? `${this.pendingText} ${e.result.text}`
           : e.result.text;
         this.pendingWords.push(...words);
         this.pendingDurationSec += (e.result.duration ?? 0) / 10_000_000;
 
+        // Punctuation-aware wait: Azure adds terminal punctuation to finished
+        // sentences. Complete sentence → dispatch fast; dangling fragment →
+        // give the learner extra time to find their words.
+        const looksComplete = /[.!?…]\s*$/.test(this.pendingText.trim());
         if (this.dispatchTimer) clearTimeout(this.dispatchTimer);
         this.dispatchTimer = setTimeout(() => {
           this.dispatchTimer = null;
           this.dispatchPending();
-        }, DISPATCH_DEBOUNCE_MS);
+        }, looksComplete ? DEBOUNCE_COMPLETE_MS : DEBOUNCE_INCOMPLETE_MS);
       }
     };
 
