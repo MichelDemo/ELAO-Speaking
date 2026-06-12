@@ -113,7 +113,7 @@ function Bar({
   );
 }
 
-// ─── Azure live panel ─────────────────────────────────────────────────────────
+// ─── Azure averages (still feeds the CEFR panel + evaluation context) ─────────
 
 interface AzureAvg {
   pronunciation: number;
@@ -122,45 +122,6 @@ interface AzureAvg {
   count: number;
   /** Turns with < 6 words — each deducts 0.5 from the fluency dimension. */
   shortTurns: number;
-}
-
-function AzurePanel({ data }: { data: AzureAvg | null }) {
-  return (
-    <div
-      style={{
-        padding: 12,
-        background: "#0f172a",
-        border: "1px solid #1e3a5f",
-        borderRadius: 8,
-        minHeight: 120,
-      }}
-    >
-      <div style={{ fontSize: 10, color: "#60a5fa", fontWeight: 700, marginBottom: 6, letterSpacing: 1 }}>
-        QUALITÉ DE PRONONCIATION
-      </div>
-      {!data ? (
-        <div style={{ color: "#4b5563", fontSize: 12 }}>En attente…</div>
-      ) : (
-        <>
-          <div style={{ fontSize: 40, fontWeight: 800, lineHeight: 1.1, color: "#f1f5f9" }}>
-            {Math.round(data.score)}<span style={{ fontSize: 16, color: "#4b5563" }}>/100</span>
-          </div>
-          <div style={{ fontSize: 10, color: "#4b5563", marginBottom: 8 }}>
-            Score acoustique · {data.count} tour{data.count > 1 ? "s" : ""}
-          </div>
-          <Bar label="Confiance" value={data.pronunciation} />
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginBottom: 3 }}>
-            <span style={{ width: 80, color: "#9ca3af", flexShrink: 0 }}>Débit</span>
-            <span style={{ fontWeight: 700, color: "#e5e7eb" }}>{Math.round(data.wpm)}</span>
-            <span style={{ color: "#4b5563", fontSize: 10 }}>mots/min</span>
-          </div>
-          <div style={{ fontSize: 9, color: "#374151", marginTop: 4 }}>
-            Mesure acoustique calibrée — pas de niveau CEFR
-          </div>
-        </>
-      )}
-    </div>
-  );
 }
 
 // ─── Claude CEFR panel ────────────────────────────────────────────────────────
@@ -1017,23 +978,13 @@ export default function Home() {
             ...(cefrResult ? { maxWidth: 1100, width: "100%", margin: "0 auto" } : {}),
           }}
         >
-          {/* Score panels — pronunciation is intentionally hidden during the
-              session. Pass-2 REST scores trickle in asynchronously per turn,
-              so mid-session numbers are a moving mix of provisional (SDK) and
-              final (REST) scores. Everything is shown together with the CEFR
-              result once the evaluation completes. */}
+          {/* Score panel — shown only once the evaluation completes. The raw
+              acoustic panel (QUALITÉ DE PRONONCIATION) was removed: the CEFR
+              card already carries the pronunciation dimension, and the raw
+              acoustic average duplicated it confusingly. */}
           {cefrResult && (
             <div style={{ padding: 12, borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 8,
-                }}
-              >
-                <AzurePanel data={azureAvg} />
-                <CefrPanel result={cefrResult} azureAvg={azureAvg} />
-              </div>
+              <CefrPanel result={cefrResult} azureAvg={azureAvg} />
             </div>
           )}
 
