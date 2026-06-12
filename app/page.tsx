@@ -960,55 +960,61 @@ export default function Home() {
         </div>
       </header>
 
-      {/* ── body ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 520px", flex: 1, overflow: "hidden" }}>
-        {/* Avatar */}
-        <div style={{ position: "relative", overflow: "hidden" }}>
-          {sessionStarted ? (
-            USE_HEYGEN ? (
-              <LiveAvatar ref={liveAvatarRef} onAmplitude={(amp) => setAmplitude(amp)} />
+      {/* ── body ──
+          During the session: avatar left + results sidebar right.
+          Once the CEFR assessment is in: the avatar section is removed and
+          the analysis (panels, listen-back audio, transcript) goes full screen. */}
+      <div style={{ display: "grid", gridTemplateColumns: cefrResult ? "1fr" : "1fr 520px", flex: 1, overflow: "hidden" }}>
+        {/* Avatar — hidden once the assessment is complete */}
+        {!cefrResult && (
+          <div style={{ position: "relative", overflow: "hidden" }}>
+            {sessionStarted ? (
+              USE_HEYGEN ? (
+                <LiveAvatar ref={liveAvatarRef} onAmplitude={(amp) => setAmplitude(amp)} />
+              ) : (
+                <Avatar amplitude={amplitude} />
+              )
             ) : (
-              <Avatar amplitude={amplitude} />
-            )
-          ) : (
-            <div style={{ display: "flex", height: "100%", alignItems: "center", justifyContent: "center", color: "#334155", flexDirection: "column", gap: 8 }}>
-              <div style={{ fontSize: 48 }}>🎙️</div>
-              <div>Démarre une session pour voir l&apos;avatar</div>
-            </div>
-          )}
-          {/* Overlay: live captions */}
-          {sessionStarted && (partialUser || streamingAssistant) && (
-            <div
-              style={{
-                position: "absolute",
-                bottom: 16,
-                left: 16,
-                right: 16,
-                padding: "10px 14px",
-                background: "rgba(0,0,0,0.72)",
-                borderRadius: 8,
-                backdropFilter: "blur(4px)",
-              }}
-            >
-              {partialUser && (
-                <div style={{ fontStyle: "italic", color: "#94a3b8", fontSize: 14 }}>
-                  🎤 {partialUser}
-                </div>
-              )}
-              {streamingAssistant && (
-                <div style={{ color: "#e2e8f0", fontSize: 14 }}>{streamingAssistant}</div>
-              )}
-            </div>
-          )}
-        </div>
+              <div style={{ display: "flex", height: "100%", alignItems: "center", justifyContent: "center", color: "#334155", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontSize: 48 }}>🎙️</div>
+                <div>Démarre une session pour voir l&apos;avatar</div>
+              </div>
+            )}
+            {/* Overlay: live captions */}
+            {sessionStarted && (partialUser || streamingAssistant) && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 16,
+                  left: 16,
+                  right: 16,
+                  padding: "10px 14px",
+                  background: "rgba(0,0,0,0.72)",
+                  borderRadius: 8,
+                  backdropFilter: "blur(4px)",
+                }}
+              >
+                {partialUser && (
+                  <div style={{ fontStyle: "italic", color: "#94a3b8", fontSize: 14 }}>
+                    🎤 {partialUser}
+                  </div>
+                )}
+                {streamingAssistant && (
+                  <div style={{ color: "#e2e8f0", fontSize: 14 }}>{streamingAssistant}</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
-        {/* Right panel */}
+        {/* Results panel — sidebar during the session, full screen afterwards */}
         <aside
           style={{
-            borderLeft: "1px solid #1e293b",
+            borderLeft: cefrResult ? "none" : "1px solid #1e293b",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
+            ...(cefrResult ? { maxWidth: 1100, width: "100%", margin: "0 auto" } : {}),
           }}
         >
           {/* Score panels — pronunciation is intentionally hidden during the

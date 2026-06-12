@@ -162,13 +162,13 @@ You cannot hear the audio. You receive evidence from two independent speech-reco
 4. The examiner's question — for inferring which words the learner intended.
 
 How to reason, word by word:
-- "good" requires POSITIVE evidence: both engines heard the same word AND verbatim confidence ≥ 0.85 AND acoustic score ≥ 80. Anything less is at best "ok".
+- "good" requires POSITIVE evidence: both engines heard the same word AND verbatim confidence ≥ 0.9 AND acoustic score ≥ 85. Anything less is at best "ok".
 - Engines heard DIFFERENT words at the same position (live "think" / verbatim "sink", or vice versa): the learner mispronounced. Phoneme substitutions that change the word (think/sink, live/leave, ship/sheep) are "bad", not "off" — they would mislead a listener. Use "off" only when the intended word is still obvious despite the distortion.
-- Same word in both engines but verbatim confidence < 0.6 OR acoustic score < 60 → "off". Confidence 0.6-0.85 or acoustic 60-80 → "ok".
+- Same word in both engines but verbatim confidence < 0.65 OR acoustic score < 65 → "off". Confidence 0.65-0.9 or acoustic 65-85 → "ok".
 - A word missing from the verbatim transcript or weak on every signal → "bad".
 - When hesitating between two verdicts, ALWAYS choose the harsher one. This assessment feeds CEFR placement — over-scoring misplaces the learner; an examiner who waves errors through is useless.
 - Grammar mistakes are NOT pronunciation mistakes. Rate only HOW words were pronounced.
-- Calibration for turn_score: flawless native-like turn 90+; clear L2 speech with accent 65-80; ONE clearly mispronounced word caps the turn at 70; two or more cap it at 55; mostly garbled speech below 40. The average submitted turn should land in the 55-75 range, not 80+.
+- Calibration for turn_score: flawless native-like turn 88+; clear L2 speech with accent 60-75; ONE clearly mispronounced word caps the turn at 65; two cap it at 50; three or more cap it at 40; mostly garbled speech below 30. The average submitted turn should land in the 50-70 range. Err on the low side — a strict examiner is correct, a generous one is broken.
 
 Return ONLY JSON, no markdown fences:
 {"turn_score": <0-100 integer>, "words": [{"w": "<word>", "v": "good|ok|off|bad"}], "summary": "<one short sentence on the main issues, or empty>"}
@@ -225,10 +225,10 @@ async function judge(
 // Deliberately harsh: flagged words cost real points so the turn average drops
 // visibly when errors are present.
 const VERDICT_MAP: Record<string, { confidence: number; accuracyScore: number; errorType: string }> = {
-  good: { confidence: 1.0,  accuracyScore: 90, errorType: "None" },
-  ok:   { confidence: 0.7,  accuracyScore: 70, errorType: "None" },
-  off:  { confidence: 0.45, accuracyScore: 45, errorType: "Mispronunciation" },
-  bad:  { confidence: 0.2,  accuracyScore: 15, errorType: "Mispronunciation" },
+  good: { confidence: 1.0,  accuracyScore: 88, errorType: "None" },
+  ok:   { confidence: 0.7,  accuracyScore: 65, errorType: "None" },
+  off:  { confidence: 0.45, accuracyScore: 38, errorType: "Mispronunciation" },
+  bad:  { confidence: 0.2,  accuracyScore: 10, errorType: "Mispronunciation" },
 };
 
 // ─── Route ────────────────────────────────────────────────────────────────────
