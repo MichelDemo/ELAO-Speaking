@@ -4,29 +4,15 @@
  * Accepts a recorded audio blob (webm/opus or mp4) from the per-turn
  * MediaRecorder and returns a PronunciationResult with per-phoneme word scores.
  *
- * Key design: we pass Deepgram's transcript as the ReferenceText.
- * In pure free-speech mode (no reference) Azure scores your pronunciation
- * against its own transcription — so "ze" → transcribed as "ze" → perfect score.
- * With Deepgram's transcript as reference, Azure compares the audio phonemes
- * against the expected phonemes of those words. When Deepgram's LM corrects
- * "ze" → "the", Azure detects the mismatch and flags a Mispronunciation.
+ * Key design: the Azure SDK transcript (pass 1) is passed as ReferenceText.
+ * Azure's ASR normalises phoneme substitutions (it writes "the" even when the
+ * learner said /z/), so scoring the audio against that reference correctly
+ * exposes substitutions, omissions and insertions (EnableMiscue:true).
  *
  * The AZURE_SPEECH_KEY never leaves the server.
  */
 
-/**
- * Discrete confidence level → 4 colour buckets (matches wordColor() in page.tsx).
- * Thresholds are tuned for Azure free-speech mode, which clusters native scores
- * in the 85-100 range. Setting the green floor at 83 means a learner needs to
- * nail every phoneme to stay green — a score of 80 (slight imprecision) shows
- * yellow instead of green.
- */
-function discreteWordConfidence(accuracyScore: number, errorType: string): number {
-  if (accuracyScore < 45 || errorType === "Omission") return 0.20;   // red
-  if (errorType === "Mispronunciation" || accuracyScore < 68) return 0.45; // orange
-  if (accuracyScore < 83) return 0.70;  // yellow
-  return 1.00;  // green
-}
+import { discreteWordConfidence, wordAccuracy } from "@/lib/pronunciation-scoring";
 
 export async function POST(req: Request) {
   const key = process.env.AZURE_SPEECH_KEY;
@@ -127,15 +113,17 @@ export async function POST(req: Request) {
     const acc = Math.round(w.PronunciationAssessment?.AccuracyScore ?? 100);
     const errType = w.PronunciationAssessment?.ErrorType ?? "None";
     const phonemes = w.Phonemes ?? [];
-    // Use the minimum phoneme score — a single bad phoneme drags the word down,
-    // catching subtle mispronunciations the word-level average would smooth over.
-    const minPhoneme = phonemes.length > 0
-      ? Math.min(...phonemes.map((p) => p.PronunciationAssessment?.AccuracyScore ?? 100))
-      : acc;
+    // Avg-phoneme + lenient thresholds via the shared scoring module —
+    // MUST match pass 1 (lib/azure-stt.ts) or pass 2 silently reverts the
+    // displayed scores to a different scale when it overwrites them.
+    const accuracy = wordAccuracy(
+      acc,
+      phonemes.map((p) => p.PronunciationAssessment?.AccuracyScore ?? 100)
+    );
     return {
       word: w.Word ?? "",
-      confidence: discreteWordConfidence(minPhoneme, errType),
-      accuracyScore: minPhoneme,
+      confidence: discreteWordConfidence(accuracy, errType),
+      accuracyScore: accuracy,
       errorType: errType,
     };
   });

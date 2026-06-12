@@ -36,30 +36,8 @@ export interface SttCallbacks {
   onError?: (err: unknown) => void;
 }
 
-/**
- * Map Azure AccuracyScore + ErrorType to 4 discrete confidence levels.
- *
- * Thresholds are intentionally lenient for L2 learners:
- *   • We use avg-phoneme (not min-phoneme) so a single ASR-artifact phoneme
- *     doesn't tank a whole word.
- *   • Mispronunciation only triggers orange below 70 — above that, the
- *     model may have mis-transcribed the word rather than the learner having
- *     actually mispronounced it.
- *   • Green starts at 75 (not 80) — non-native "good enough" pronunciation
- *     should land in the green bucket.
- *
- *   1.00 → green   (≥ 75, or Mispronunciation ≥ 70)
- *   0.70 → yellow  (≥ 60, not Mispronunciation-below-70)
- *   0.45 → orange  (Mispronunciation < 70, or score < 60)
- *   0.20 → red     (score < 30, or Omission)
- */
-function discreteWordConfidence(accuracyScore: number, errorType: string): number {
-  if (accuracyScore < 30 || errorType === "Omission") return 0.20;
-  if (errorType === "Mispronunciation" && accuracyScore < 70) return 0.45;
-  if (accuracyScore < 60) return 0.45;
-  if (accuracyScore < 75) return 0.70;
-  return 1.00;
-}
+// Scoring shared with app/api/pronunciation/route.ts — single source of truth.
+import { discreteWordConfidence, wordAccuracy } from "@/lib/pronunciation-scoring";
 
 interface RecognizerHandle {
   startContinuousRecognitionAsync(ok: () => void, err: (e: unknown) => void): void;
@@ -133,20 +111,15 @@ export class AzureSTT {
             };
             const accuracyScore = Math.round(word.PronunciationAssessment?.AccuracyScore ?? 100);
             const errorType = word.PronunciationAssessment?.ErrorType ?? "None";
-            // Use the average phoneme score rather than the minimum.
-            // Min-phoneme is too sensitive to single-phoneme ASR recognition
-            // artifacts — one poorly scored phoneme tanks the whole word even
-            // when the learner's overall pronunciation is fine. The average is
-            // still more granular than Azure's word-level score while being
-            // robust to occasional noise.
             const phonemes = word.Phonemes ?? [];
-            const avgPhoneme = phonemes.length > 0
-              ? Math.round(phonemes.reduce((s, p) => s + (p.PronunciationAssessment?.AccuracyScore ?? 100), 0) / phonemes.length)
-              : accuracyScore;
+            const accuracy = wordAccuracy(
+              accuracyScore,
+              phonemes.map((p) => p.PronunciationAssessment?.AccuracyScore ?? 100)
+            );
             return {
               word: word.Word ?? "",
-              confidence: discreteWordConfidence(avgPhoneme, errorType),
-              accuracyScore: avgPhoneme,
+              confidence: discreteWordConfidence(accuracy, errorType),
+              accuracyScore: accuracy,
               errorType,
             };
           }

@@ -60,15 +60,10 @@ function scoreBarColor(score: number): string {
   return "#fb923c";
 }
 
-/**
- * Azure free-speech mode clusters scores in the 75-95 range regardless of CEFR level.
- * Linear calibration: displayed = 1.4 × raw − 40
- * Hits the reference table exactly: 95→93, 90→86, 85→79, 80→72, 75→65, 100→100.
- * Applied for display only — raw scores are still passed to Claude as acoustic context.
- */
-function deflateAzure(raw: number): number {
-  return Math.max(0, Math.round(1.4 * raw - 40));
-}
+// deflateAzure removed: the 1.4×raw−40 calibration was tuned for free-speech
+// mode, which clustered all scores in 75-95. Pass-2 reference-mode scoring
+// (ReferenceText + EnableMiscue) is already discriminative — deflating it on
+// top double-penalised learners (raw 75 displayed as 65).
 
 /** Derive CEFR level from composite score (5-point bands). */
 function scoreToLevel(score: number): string {
@@ -147,12 +142,12 @@ function AzurePanel({ data }: { data: AzureAvg | null }) {
       ) : (
         <>
           <div style={{ fontSize: 40, fontWeight: 800, lineHeight: 1.1, color: "#f1f5f9" }}>
-            {deflateAzure(data.score)}<span style={{ fontSize: 16, color: "#4b5563" }}>/100</span>
+            {Math.round(data.score)}<span style={{ fontSize: 16, color: "#4b5563" }}>/100</span>
           </div>
           <div style={{ fontSize: 10, color: "#4b5563", marginBottom: 8 }}>
             Score acoustique · {data.count} tour{data.count > 1 ? "s" : ""}
           </div>
-          <Bar label="Confiance" value={deflateAzure(data.pronunciation)} />
+          <Bar label="Confiance" value={data.pronunciation} />
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginBottom: 3 }}>
             <span style={{ width: 80, color: "#9ca3af", flexShrink: 0 }}>Débit</span>
             <span style={{ fontWeight: 700, color: "#e5e7eb" }}>{Math.round(data.wpm)}</span>
@@ -177,7 +172,7 @@ const CONFIDENCE_COLOR: Record<string, string> = {
 
 function CefrPanel({ result, azureAvg }: { result: CefrResult; azureAvg: AzureAvg | null }) {
   // All 4 components on a 0-10 scale for uniform bar display
-  const pronScore  = azureAvg  ? deflateAzure(azureAvg.pronunciation) / 10 : null;
+  const pronScore  = azureAvg  ? azureAvg.pronunciation / 10 : null;
   const fluency    = result.dimensions.fluency;
   const vocabGram  = result.dimensions.vocabulary_grammar;
   const comm       = result.dimensions.communication;
@@ -958,19 +953,25 @@ export default function Home() {
             overflow: "hidden",
           }}
         >
-          {/* Score panels */}
-          <div style={{ padding: 12, borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: cefrResult ? "1fr 1fr" : "1fr",
-                gap: 8,
-              }}
-            >
-              <AzurePanel data={azureAvg} />
-              {cefrResult && <CefrPanel result={cefrResult} azureAvg={azureAvg} />}
+          {/* Score panels — pronunciation is intentionally hidden during the
+              session. Pass-2 REST scores trickle in asynchronously per turn,
+              so mid-session numbers are a moving mix of provisional (SDK) and
+              final (REST) scores. Everything is shown together with the CEFR
+              result once the evaluation completes. */}
+          {cefrResult && (
+            <div style={{ padding: 12, borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 8,
+                }}
+              >
+                <AzurePanel data={azureAvg} />
+                <CefrPanel result={cefrResult} azureAvg={azureAvg} />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Listen-back player — shown once the recording has been captured */}
           {audioBlob && audioBlobUrlRef.current && (
@@ -1019,13 +1020,15 @@ export default function Home() {
                   {m.role === "user" ? "Vous" : "Avatar"}
                 </div>
                 <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                  {m.role === "user" && m.pronunciation?.words?.length ? (
+                  {/* Coloured pronunciation words appear only after the CEFR
+                      evaluation — during the session the transcript stays plain. */}
+                  {cefrResult && m.role === "user" && m.pronunciation?.words?.length ? (
                     <UserWords words={m.pronunciation.words} />
                   ) : (
                     m.content
                   )}
                 </div>
-                {m.role === "user" && m.pronunciation && (
+                {cefrResult && m.role === "user" && m.pronunciation && (
                   <UtteranceBadges p={m.pronunciation} />
                 )}
                 {m.role === "user" && m.audioUrl && cefrResult && (
