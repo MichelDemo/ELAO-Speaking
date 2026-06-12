@@ -167,7 +167,7 @@ How to reason, word by word. The decisive signal is CROSS-ENGINE AGREEMENT — t
 - Engines heard DIFFERENT words at the same position (live "think" / verbatim "sink", or vice versa): this is real mispronunciation evidence — be harsh here. Substitutions that change the word (think/sink, live/leave, ship/sheep) are "bad"; use "off" only when the intended word is still obvious despite the distortion. Ignore trivial transcription variants (casing, hyphenation, number formatting, contractions) — those are not disagreements.
 - A word missing from the verbatim transcript entirely or weak on every signal → "bad".
 - Grammar mistakes are NOT pronunciation mistakes. Rate only HOW words were pronounced.
-- Calibration for turn_score: a turn with NO cross-engine disagreement is clean speech — score it 72-88 depending on confidence levels. Real errors cost hard: ONE mispronounced word caps the turn at 65; two cap it at 50; three or more cap it at 40; mostly garbled speech below 30. Harshness must come from real evidence (disagreement, missing words), never from punishing agreed words with average confidence.
+- Calibration for turn_score: a turn with NO cross-engine disagreement is clean speech — score it 75-90 depending on confidence levels. Real errors still cost: ONE mispronounced word caps the turn at 70; two cap it at 55; three or more cap it at 45; mostly garbled speech below 35. Harshness must come from real evidence (disagreement, missing words), never from punishing agreed words with average confidence.
 
 Return ONLY JSON, no markdown fences:
 {"turn_score": <0-100 integer>, "words": [{"w": "<word>", "v": "good|ok|off|bad"}], "summary": "<one short sentence on the main issues, or empty>"}
@@ -224,10 +224,10 @@ async function judge(
 // Deliberately harsh: flagged words cost real points so the turn average drops
 // visibly when errors are present.
 const VERDICT_MAP: Record<string, { confidence: number; accuracyScore: number; errorType: string }> = {
-  good: { confidence: 1.0,  accuracyScore: 88, errorType: "None" },
-  ok:   { confidence: 0.7,  accuracyScore: 65, errorType: "None" },
-  off:  { confidence: 0.45, accuracyScore: 38, errorType: "Mispronunciation" },
-  bad:  { confidence: 0.2,  accuracyScore: 10, errorType: "Mispronunciation" },
+  good: { confidence: 1.0,  accuracyScore: 90, errorType: "None" },
+  ok:   { confidence: 0.7,  accuracyScore: 70, errorType: "None" },
+  off:  { confidence: 0.45, accuracyScore: 45, errorType: "Mispronunciation" },
+  bad:  { confidence: 0.2,  accuracyScore: 18, errorType: "Mispronunciation" },
 };
 
 // ─── Route ────────────────────────────────────────────────────────────────────

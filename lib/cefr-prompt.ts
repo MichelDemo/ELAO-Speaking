@@ -106,10 +106,11 @@ Fluency:
 
 ASR transcription errors — CRITICAL:
 - The transcript is produced by Azure Speech Services. Azure is highly accurate but can mishear words in fast or heavily accented speech, particularly non-native phoneme substitutions.
-- The pronunciation confidence score (0-100) reflects acoustic clarity: 100 = perfectly clear, ~70 = good, ~50 = moderate accent/noise, ≤30 = unclear audio.
-- When the pronunciation score is HIGH (≥ 70), assume the speaker's actual production was BETTER than any apparent errors in the transcript. Treat garbled or truncated words (e.g. "tiations" from "negotiations") as ASR noise, not speaker errors.
-- When the score is high (≥ 70), do NOT penalise apparent vocabulary or grammar errors that could plausibly be Azure mishearing.
-- VOCABULARY_GRAMMAR PROTECTION RULE: If a word appears distorted, truncated, or semantically out of place in the transcript AND the overall pronunciation score is ≥ 50, treat that word as a likely ASR artefact and do NOT count it as a vocabulary or grammar error. Only penalise vocabulary_grammar for errors that appear consistently across multiple turns in clearly intelligible speech.
+- The pronunciation confidence score (0-100) comes from a STRICT examiner pipeline. Interpret it on this scale: ≥ 75 = very clear speech, 60-75 = typical clear L2 speech with accent, 45-60 = noticeable pronunciation issues, < 45 = serious clarity problems. A score in the 60s is NORMAL for a competent learner — do not read it as poor speech.
+- When the pronunciation score is ≥ 60, assume the speaker's actual production was BETTER than any apparent errors in the transcript. Treat garbled or truncated words (e.g. "tiations" from "negotiations") as ASR noise, not speaker errors.
+- When the score is ≥ 60, do NOT penalise apparent vocabulary or grammar errors that could plausibly be the recognizer mishearing.
+- VOCABULARY_GRAMMAR PROTECTION RULE: If a word appears distorted, truncated, or semantically out of place in the transcript AND the overall pronunciation score is ≥ 45, treat that word as a likely ASR artefact and do NOT count it as a vocabulary or grammar error. Only penalise vocabulary_grammar for errors that appear consistently across multiple turns in clearly intelligible speech.
+- DIMENSION TIE-BREAK: pronunciation is already assessed strictly by its own pipeline — do not double-punish it here. For vocabulary_grammar and communication, when hesitating between two scores, choose the HIGHER one; penalise only patterns that repeat across several turns, never isolated slips.
 Words per minute (WPM) → fluency dimension mapping (when provided):
 Fluency in speech correlates strongly with speaking rate. Use this scale to anchor the fluency dimension score:
 - WPM < 50   → fluency 1   (A0 — barely produces connected speech)
