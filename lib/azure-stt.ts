@@ -45,14 +45,71 @@ interface RecognizerHandle {
   close(): void;
 }
 
+/**
+ * How long the SDK waits in silence before closing a speech segment.
+ * Default (~650 ms) is tuned for fluent native speakers; CEFR learners pause
+ * 2-3 s mid-sentence searching for words, so 650 ms chops their sentences
+ * apart and the avatar answers half a thought. 2200 ms tolerates word-finding
+ * pauses. (SDK valid range: 100-5000.)
+ */
+const SEGMENTATION_SILENCE_MS = "2200";
+
+/**
+ * After a segment is recognized, wait this long before treating the turn as
+ * finished. If the user resumes speaking (a `recognizing` partial arrives),
+ * the timer is cancelled and the next segment merges into the same turn.
+ * Total silence before the avatar replies ≈ SEGMENTATION_SILENCE_MS + this.
+ */
+const DISPATCH_DEBOUNCE_MS = 1600;
+
 export class AzureSTT {
   private recognizer: RecognizerHandle | null = null;
   private cb: SttCallbacks;
   private language: "fr" | "en" | "nl-BE";
 
+  // Segments accumulated since the last dispatch — merged into one turn.
+  private pendingText = "";
+  private pendingWords: WordScore[] = [];
+  private pendingDurationSec = 0;
+  private dispatchTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(language: "fr" | "en" | "nl-BE", callbacks: SttCallbacks) {
     this.language = language;
     this.cb = callbacks;
+  }
+
+  /** Merge pending segments into a single turn and fire onFinal. */
+  private dispatchPending() {
+    if (this.dispatchTimer) {
+      clearTimeout(this.dispatchTimer);
+      this.dispatchTimer = null;
+    }
+    if (!this.pendingText.trim()) return;
+
+    const text = this.pendingText.trim();
+    const words = this.pendingWords;
+    const durationSec = this.pendingDurationSec;
+    this.pendingText = "";
+    this.pendingWords = [];
+    this.pendingDurationSec = 0;
+
+    // WPM across the whole merged turn (≥ 6 words to avoid skewing fluency).
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    const wpm = durationSec > 0.5 && wordCount >= 6
+      ? Math.round((wordCount / durationSec) * 60)
+      : 0;
+
+    const derivedScore = words.length > 0
+      ? Math.round(words.reduce((s, w) => s + w.accuracyScore, 0) / words.length)
+      : 0;
+
+    this.cb.onFinal?.(text, {
+      text,
+      pronunciationScore: derivedScore,
+      accuracyScore: derivedScore,
+      wpm,
+      words,
+    });
   }
 
   async start() {
@@ -69,6 +126,11 @@ export class AzureSTT {
       this.language === "fr" ? "fr-FR" :
       this.language === "nl-BE" ? "nl-BE" :
       "en-US";
+    // Tolerate learner word-finding pauses — see SEGMENTATION_SILENCE_MS doc.
+    speechConfig.setProperty(
+      sdk.PropertyId.Speech_SegmentationSilenceTimeoutMs,
+      SEGMENTATION_SILENCE_MS
+    );
 
     const audioConfig = sdk.AudioConfig.fromDefaultMicrophoneInput();
 
@@ -88,7 +150,17 @@ export class AzureSTT {
     this.recognizer = recognizer as unknown as RecognizerHandle;
 
     recognizer.recognizing = (_: unknown, e: { result: { text: string } }) => {
-      this.cb.onPartial?.(e.result.text);
+      // User resumed speaking before the debounce expired — cancel the pending
+      // dispatch so this speech merges into the same turn instead of the avatar
+      // answering the first half of the sentence.
+      if (this.dispatchTimer) {
+        clearTimeout(this.dispatchTimer);
+        this.dispatchTimer = null;
+      }
+      const display = this.pendingText
+        ? `${this.pendingText} ${e.result.text}`
+        : e.result.text;
+      this.cb.onPartial?.(display);
     };
 
     recognizer.recognized = (
@@ -126,27 +198,22 @@ export class AzureSTT {
           }
         );
 
-        // WPM only for substantive turns (≥ 6 words); short answers would
-        // skew the fluency average downward.
-        const durationSec = (e.result.duration ?? 0) / 10_000_000;
-        const wordCount = e.result.text.trim().split(/\s+/).filter(Boolean).length;
-        const wpm = durationSec > 0.5 && wordCount >= 6
-          ? Math.round((wordCount / durationSec) * 60)
-          : 0;
+        // Accumulate the segment instead of dispatching immediately. The SDK
+        // closes a segment after SEGMENTATION_SILENCE_MS of silence, but a
+        // learner may just be pausing — only after DISPATCH_DEBOUNCE_MS with
+        // no new speech do we treat the turn as finished. A `recognizing`
+        // partial cancels the timer and merges the next segment in.
+        this.pendingText = this.pendingText
+          ? `${this.pendingText} ${e.result.text}`
+          : e.result.text;
+        this.pendingWords.push(...words);
+        this.pendingDurationSec += (e.result.duration ?? 0) / 10_000_000;
 
-        // Derive the turn-level score from avg-phoneme word scores — consistent
-        // with the colour buckets shown in the transcript.
-        const derivedScore = words.length > 0
-          ? Math.round(words.reduce((s, w) => s + w.accuracyScore, 0) / words.length)
-          : Math.round(pronResult.pronunciationScore ?? 0);
-
-        this.cb.onFinal?.(e.result.text, {
-          text: e.result.text,
-          pronunciationScore: derivedScore,
-          accuracyScore: derivedScore,
-          wpm,
-          words,
-        });
+        if (this.dispatchTimer) clearTimeout(this.dispatchTimer);
+        this.dispatchTimer = setTimeout(() => {
+          this.dispatchTimer = null;
+          this.dispatchPending();
+        }, DISPATCH_DEBOUNCE_MS);
       }
     };
 
@@ -166,6 +233,14 @@ export class AzureSTT {
   }
 
   stop() {
+    if (this.dispatchTimer) {
+      clearTimeout(this.dispatchTimer);
+      this.dispatchTimer = null;
+    }
+    this.pendingText = "";
+    this.pendingWords = [];
+    this.pendingDurationSec = 0;
+
     const r = this.recognizer;
     if (r) {
       r.stopContinuousRecognitionAsync(() => r.close());
