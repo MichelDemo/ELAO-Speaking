@@ -1,21 +1,28 @@
 /**
- * Server-side Azure Pronunciation Assessment with LLM reference correction.
+ * Ensemble pronunciation assessment — two independent ASR engines + LLM judge.
  *
- * Accepts a recorded audio blob (webm/opus or mp4) from the per-turn
- * MediaRecorder and returns a PronunciationResult with per-phoneme word scores.
+ * Previous approach (Azure Pronunciation Assessment alone, in various modes)
+ * proved unreliable: free-speech mode scores ~100 for anything it recognises,
+ * and reference mode is partially circular because the reference comes from
+ * the same recognition stack. This route replaces the single-engine score
+ * with TRIANGULATION:
  *
- * Why the LLM step is load-bearing:
- *   Scoring audio against the ASR's own transcript of that audio is partially
- *   circular — when a learner says "I sink so", the ASR often writes "sink"
- *   (a valid word matching the bad pronunciation), so the reference contains
- *   the error and Azure scores /sɪŋk/ against "sink" → perfect. Claude sees
- *   the transcript plus the examiner's question and reconstructs the INTENDED
- *   text ("I think so") while preserving the learner's genuine grammar errors.
- *   Azure then scores the actual phonemes against the intended words —
- *   /s/ vs expected /θ/ → Mispronunciation flagged. That is the assessment
- *   reference-text mode working as designed.
+ *   1. Deepgram nova-3 (prerecorded REST) — an independent engine that
+ *      transcribes closer to what was acoustically said, with per-word
+ *      confidence. A mispronounced word shows up as a DIFFERENT word or a
+ *      low-confidence word here.
+ *   2. Azure free-speech assessment — kept as a second, acoustic signal:
+ *      per-word accuracy + phoneme scores + error flags.
+ *   3. Claude as judge — receives the live transcript (what the UI shows),
+ *      both engines' evidence, and the examiner's question, then rates each
+ *      word the way a human examiner would: engines agree + high confidence
+ *      → good; engines disagree on a word ("think" vs "sink") → work out the
+ *      intended word from context and rate the substitution.
  *
- * The AZURE_SPEECH_KEY and ANTHROPIC_API_KEY never leave the server.
+ * Fallbacks: if the judge or Deepgram fail, the Azure acoustic result is
+ * returned (worst case = previous behaviour, never worse).
+ *
+ * AZURE_SPEECH_KEY, DEEPGRAM_API_KEY, ANTHROPIC_API_KEY never leave the server.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -23,107 +30,222 @@ import { discreteWordConfidence, wordAccuracy } from "@/lib/pronunciation-scorin
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const CORRECTION_SYSTEM = `You normalise automatic speech-recognition (ASR) transcripts of second-language learners so their pronunciation can be assessed against the words they actually meant to say.
+// ─── Evidence collectors ──────────────────────────────────────────────────────
 
-Rewrite the transcript as the words the learner most plausibly INTENDED:
-- Replace ASR mishearings and phonetically garbled words with the intended word. A mispronounced word is often transcribed as a similar-sounding DIFFERENT word ("I sink so" → "I think so"; "il fo parti" → "il faut partir"). Use the examiner's question to infer what the learner was answering.
-- PRESERVE the learner's grammar mistakes, word order, repetitions and filler words exactly as they are — do not improve their language, only undo transcription errors.
-- Keep the word count as close to the original as possible.
-- If the transcript already reads as intended, return it unchanged.
+interface DgEvidence {
+  transcript: string;
+  words: Array<{ word: string; confidence: number }>;
+}
 
-Return ONLY the corrected text. No explanation, no quotes, no preamble.`;
-
-/**
- * Ask Claude for the intended text. Falls back to the raw ASR transcript on
- * any failure or if the correction drifts too far (word-count sanity guard —
- * a reference misaligned with the audio produces spurious Omission/Insertion
- * flags, which is worse than a slightly circular reference).
- */
-async function intendedText(asrText: string, langLabel: string, context: string): Promise<string> {
+/** Independent verbatim hearing of the audio via Deepgram's prerecorded API. */
+async function deepgramVerbatim(
+  audio: ArrayBuffer,
+  contentType: string,
+  langCode: string,
+): Promise<DgEvidence | null> {
+  const key = process.env.DEEPGRAM_API_KEY;
+  if (!key) return null;
+  const lang = langCode === "fr" ? "fr" : langCode === "nl-BE" ? "nl" : "en-US";
   try {
-    const res = await anthropic.messages.create({
-      model: process.env.ANTHROPIC_CORRECTION_MODEL ?? "claude-opus-4-8",
-      max_tokens: 300,
-      system: CORRECTION_SYSTEM,
-      messages: [{
-        role: "user",
-        content:
-          `Language: ${langLabel}\n` +
-          (context ? `Examiner's question: "${context}"\n` : "") +
-          `ASR transcript of the learner's reply:\n"${asrText}"`,
-      }],
-    });
-    const out = (res.content[0]?.type === "text" ? res.content[0].text : "").trim();
-    if (!out) return asrText;
-    const inWords = asrText.split(/\s+/).filter(Boolean).length;
-    const outWords = out.split(/\s+/).filter(Boolean).length;
-    if (Math.abs(outWords - inWords) > Math.max(3, Math.round(inWords * 0.3))) {
-      console.warn(`[pronunciation] correction drifted (${inWords}→${outWords} words), using raw ASR text`);
-      return asrText;
+    const res = await fetch(
+      `https://api.deepgram.com/v1/listen?model=nova-3&language=${lang}&punctuate=false&smart_format=false`,
+      {
+        method: "POST",
+        headers: { Authorization: `Token ${key}`, "Content-Type": contentType },
+        body: audio,
+      }
+    );
+    if (!res.ok) {
+      console.warn(`[pronunciation] deepgram ${res.status}: ${(await res.text()).slice(0, 150)}`);
+      return null;
     }
-    return out;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = (await res.json()) as any;
+    const alt = data.results?.channels?.[0]?.alternatives?.[0];
+    if (!alt?.transcript?.trim()) return null;
+    return {
+      transcript: alt.transcript as string,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      words: (alt.words ?? []).map((w: any) => ({
+        word: w.word as string,
+        confidence: Math.round((w.confidence ?? 0) * 100) / 100,
+      })),
+    };
   } catch (e) {
-    console.warn("[pronunciation] correction failed, using raw ASR text:", e);
-    return asrText;
+    console.warn("[pronunciation] deepgram failed:", e);
+    return null;
   }
 }
+
+interface AzWord {
+  word: string;
+  accuracyScore: number;
+  errorType: string;
+}
+
+interface AzEvidence {
+  text: string;
+  words: AzWord[];
+  durationSec: number;
+}
+
+/** Azure free-speech pronunciation assessment — acoustic per-word scores. */
+async function azureAcoustic(
+  audio: ArrayBuffer,
+  contentType: string,
+  langCode: string,
+  key: string,
+  region: string,
+): Promise<AzEvidence | null> {
+  const langMap: Record<string, string> = { fr: "fr-FR", en: "en-US", "nl-BE": "nl-BE" };
+  const pronConfigB64 = Buffer.from(
+    JSON.stringify({ ReferenceText: "", GradingSystem: "HundredMark", Granularity: "Phoneme", EnableMiscue: false })
+  ).toString("base64");
+
+  try {
+    const res = await fetch(
+      `https://${region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1` +
+        `?language=${langMap[langCode] ?? "fr-FR"}&format=detailed`,
+      {
+        method: "POST",
+        headers: {
+          "Ocp-Apim-Subscription-Key": key,
+          "Content-Type": contentType,
+          "Pronunciation-Assessment": pronConfigB64,
+        },
+        body: audio,
+      }
+    );
+    if (!res.ok) {
+      console.warn(`[pronunciation] azure ${res.status}: ${(await res.text()).slice(0, 150)}`);
+      return null;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = (await res.json()) as any;
+    if (data.RecognitionStatus !== "Success" || !data.NBest?.[0]) {
+      console.warn(`[pronunciation] azure no-speech: ${data.RecognitionStatus}`);
+      return null;
+    }
+    const best = data.NBest[0];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const words: AzWord[] = (best.Words ?? []).map((w: any) => {
+      const acc = Math.round(w.PronunciationAssessment?.AccuracyScore ?? 100);
+      const errType = w.PronunciationAssessment?.ErrorType ?? "None";
+      const accuracy = wordAccuracy(
+        acc,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (w.Phonemes ?? []).map((p: any) => p.PronunciationAssessment?.AccuracyScore ?? 100),
+        errType
+      );
+      return { word: w.Word ?? "", accuracyScore: accuracy, errorType: errType };
+    });
+    return {
+      text: best.Display ?? "",
+      words,
+      durationSec: (data.Duration ?? 0) / 10_000_000,
+    };
+  } catch (e) {
+    console.warn("[pronunciation] azure failed:", e);
+    return null;
+  }
+}
+
+// ─── The judge ────────────────────────────────────────────────────────────────
+
+const JUDGE_SYSTEM = `You are an expert phonetician assessing the pronunciation of a second-language learner.
+
+You cannot hear the audio. You receive evidence from two independent speech-recognition engines that both processed the SAME recording, and you triangulate:
+
+1. LIVE transcript — what the conversation recognizer understood. These are the words you must rate, in order.
+2. VERBATIM transcript (independent engine) — a second engine's hearing of the same audio, with per-word confidence 0-1. It transcribes closer to what was acoustically said.
+3. ACOUSTIC scores — per-word pronunciation accuracy 0-100 and error flags from a pronunciation model.
+4. The examiner's question — for inferring which words the learner intended.
+
+How to reason, word by word:
+- Both engines heard the same word, high confidence/score → "good".
+- Engines heard DIFFERENT words at the same position (live "think" / verbatim "sink", or vice versa): the learner likely mispronounced. Infer the intended word from context and rate the severity of the substitution → "off" or "bad".
+- Same word in both engines but low verbatim confidence or mediocre acoustic score → "ok" (accented but clear), not "off".
+- A word missing entirely from the verbatim transcript or with very low scores everywhere → "bad".
+- Grammar mistakes are NOT pronunciation mistakes. Rate only HOW words were pronounced.
+- Calibration: a typical understandable L2 speaker averages 70-85 overall. Do not give everything 90+, and do not punish a mere accent. Reserve scores under 50 for speech a sympathetic listener would struggle to understand.
+
+Return ONLY JSON, no markdown fences:
+{"turn_score": <0-100 integer>, "words": [{"w": "<word>", "v": "good|ok|off|bad"}], "summary": "<one short sentence on the main issues, or empty>"}
+The "words" array must contain EXACTLY one entry per word of the LIVE transcript, in the same order, using the same words.`;
+
+interface JudgeWord {
+  w: string;
+  v: "good" | "ok" | "off" | "bad";
+}
+
+interface JudgeResult {
+  turn_score: number;
+  words: JudgeWord[];
+  summary?: string;
+}
+
+async function judge(
+  liveTranscript: string,
+  langLabel: string,
+  context: string,
+  dg: DgEvidence | null,
+  az: AzEvidence | null,
+): Promise<JudgeResult | null> {
+  const evidence =
+    `Language: ${langLabel}\n` +
+    (context ? `Examiner's question: "${context}"\n` : "") +
+    `\nLIVE transcript (rate these words, in order):\n"${liveTranscript}"\n` +
+    (dg
+      ? `\nVERBATIM transcript (independent engine):\n"${dg.transcript}"\nPer-word confidence: ${dg.words.map((w) => `${w.word}(${w.confidence})`).join(" ")}\n`
+      : "\nVERBATIM transcript: unavailable\n") +
+    (az
+      ? `\nACOUSTIC scores: ${az.words.map((w) => `${w.word}(${w.accuracyScore}${w.errorType !== "None" ? "," + w.errorType : ""})`).join(" ")}\n`
+      : "\nACOUSTIC scores: unavailable\n");
+
+  try {
+    const res = await anthropic.messages.create({
+      model: process.env.ANTHROPIC_PRONUNCIATION_MODEL ?? "claude-opus-4-8",
+      max_tokens: 2000,
+      system: JUDGE_SYSTEM,
+      messages: [{ role: "user", content: evidence }],
+    });
+    const text = (res.content[0]?.type === "text" ? res.content[0].text : "").trim();
+    const cleaned = text.replace(/^```json\s*|\s*```$/g, "").trim();
+    const parsed = JSON.parse(cleaned) as JudgeResult;
+    if (typeof parsed.turn_score !== "number" || !Array.isArray(parsed.words)) return null;
+    return parsed;
+  } catch (e) {
+    console.warn("[pronunciation] judge failed:", e);
+    return null;
+  }
+}
+
+// Verdict → display mapping (confidence buckets match wordColor() in page.tsx).
+const VERDICT_MAP: Record<string, { confidence: number; accuracyScore: number; errorType: string }> = {
+  good: { confidence: 1.0,  accuracyScore: 92, errorType: "None" },
+  ok:   { confidence: 0.7,  accuracyScore: 75, errorType: "None" },
+  off:  { confidence: 0.45, accuracyScore: 55, errorType: "Mispronunciation" },
+  bad:  { confidence: 0.2,  accuracyScore: 30, errorType: "Mispronunciation" },
+};
+
+// ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
   const key = process.env.AZURE_SPEECH_KEY;
   const region = process.env.AZURE_SPEECH_REGION ?? "westeurope";
-
-  if (!key) {
-    return new Response("AZURE_SPEECH_KEY missing", { status: 500 });
-  }
+  if (!key) return new Response("AZURE_SPEECH_KEY missing", { status: 500 });
 
   const formData = await req.formData();
   const audio = formData.get("audio") as Blob | null;
   const langCode = (formData.get("language") as string | null) ?? "fr";
-  const dgWpm = parseInt((formData.get("wpm") as string | null) ?? "0", 10);
-  // ASR transcript of this turn (from the browser Azure SDK).
+  const clientWpm = parseInt((formData.get("wpm") as string | null) ?? "0", 10);
+  // Live transcript of this turn (the words shown in the UI).
   const referenceText = (formData.get("referenceText") as string | null) ?? "";
-  // The examiner's question the learner was answering — context for correction.
+  // The examiner's question the learner was answering.
   const context = (formData.get("context") as string | null) ?? "";
 
-  if (!audio || audio.size === 0) {
-    return new Response("No audio", { status: 400 });
-  }
+  if (!audio || audio.size === 0) return new Response("No audio", { status: 400 });
 
-  console.log(`[pronunciation] blob=${audio.size}B type=${audio.type} lang=${langCode} wpm=${dgWpm} ref="${referenceText.slice(0, 40)}${referenceText.length > 40 ? "…" : ""}"`);
-
-  const langMap: Record<string, string> = {
-    fr: "fr-FR",
-    en: "en-US",
-    "nl-BE": "nl-BE",
-  };
-  const langLabel =
-    langCode === "fr" ? "French" :
-    langCode === "nl-BE" ? "Dutch (Belgian)" :
-    "English";
-
-  // LLM-corrected reference: what the learner INTENDED to say. This is what
-  // breaks the ASR circularity — see the header comment.
-  const correctedReference = referenceText
-    ? await intendedText(referenceText, langLabel, context)
-    : "";
-  if (correctedReference && correctedReference !== referenceText) {
-    console.log(`[pronunciation] corrected reference: "${referenceText}" → "${correctedReference}"`);
-  }
-
-  // Reference mode (EnableMiscue:true) scores the audio's phonemes against the
-  // expected phonemes of the corrected reference — catching substitutions,
-  // omissions and insertions. Free-speech fallback when no transcript provided.
-  const pronConfigJson = JSON.stringify(
-    correctedReference
-      ? { ReferenceText: correctedReference, GradingSystem: "HundredMark", Granularity: "Phoneme", EnableMiscue: true }
-      : { ReferenceText: "",                 GradingSystem: "HundredMark", Granularity: "Phoneme", EnableMiscue: false }
-  );
-  const pronConfigB64 = Buffer.from(pronConfigJson).toString("base64");
-
-  // Normalise Content-Type: Azure's short-audio REST endpoint officially
-  // supports WAV/PCM and OGG/OPUS. The client converts MediaRecorder output to
-  // WAV 16 kHz mono before upload (lib/audio-wav.ts) — webm passthrough remains
-  // only as a fallback when browser-side decoding failed.
   const rawType = audio.type ?? "";
   const contentType = rawType.includes("wav")
     ? "audio/wav; codecs=audio/pcm; samplerate=16000"
@@ -131,91 +253,82 @@ export async function POST(req: Request) {
     ? "audio/mp4"
     : "audio/webm;codecs=opus";
 
-  const azureRes = await fetch(
-    `https://${region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1` +
-      `?language=${langMap[langCode] ?? "fr-FR"}&format=detailed`,
-    {
-      method: "POST",
-      headers: {
-        "Ocp-Apim-Subscription-Key": key,
-        "Content-Type": contentType,
-        "Pronunciation-Assessment": pronConfigB64,
-      },
-      body: await audio.arrayBuffer(),
-    }
+  const langLabel =
+    langCode === "fr" ? "French" :
+    langCode === "nl-BE" ? "Dutch (Belgian)" :
+    "English";
+
+  console.log(`[pronunciation] blob=${audio.size}B type=${rawType} lang=${langCode} live="${referenceText.slice(0, 50)}"`);
+
+  const audioBuf = await audio.arrayBuffer();
+
+  // Both engines hear the audio in parallel — independent evidence.
+  const [dg, az] = await Promise.all([
+    deepgramVerbatim(audioBuf, contentType, langCode),
+    azureAcoustic(audioBuf, contentType, langCode, key, region),
+  ]);
+
+  console.log(
+    `[pronunciation] evidence: deepgram=${dg ? `"${dg.transcript.slice(0, 50)}"` : "none"} azure=${az ? `${az.words.length} words` : "none"}`
   );
 
-  if (!azureRes.ok) {
-    const errText = await azureRes.text();
-    console.error("Azure pronunciation REST error:", azureRes.status, errText);
-    // JSON body so the client can read the error without r.json() throwing.
-    return Response.json(
-      { error: `Azure ${azureRes.status}`, detail: errText.slice(0, 200) },
-      { status: 502 }
-    );
-  }
+  const liveText = referenceText || az?.text || dg?.transcript || "";
+  if (!liveText.trim()) return Response.json(null);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data = await azureRes.json() as any;
-
-  if (data.RecognitionStatus !== "Success" || !data.NBest?.[0]) {
-    // Speech not recognised — silence, background noise, or clip too short.
-    console.warn(`[pronunciation] Azure no-speech: status=${data.RecognitionStatus}`);
-    return Response.json(null);
-  }
-
-  const best = data.NBest[0];
-
-  const words = (best.Words ?? []).map((w: {
-    Word?: string;
-    PronunciationAssessment?: { AccuracyScore?: number; ErrorType?: string };
-    Phonemes?: Array<{ PronunciationAssessment?: { AccuracyScore?: number } }>;
-  }) => {
-    const acc = Math.round(w.PronunciationAssessment?.AccuracyScore ?? 100);
-    const errType = w.PronunciationAssessment?.ErrorType ?? "None";
-    const phonemes = w.Phonemes ?? [];
-    // Avg-phoneme + lenient thresholds via the shared scoring module —
-    // MUST match pass 1 (lib/azure-stt.ts) or pass 2 silently reverts the
-    // displayed scores to a different scale when it overwrites them.
-    const accuracy = wordAccuracy(
-      acc,
-      phonemes.map((p) => p.PronunciationAssessment?.AccuracyScore ?? 100),
-      errType
-    );
-    return {
-      word: w.Word ?? "",
-      confidence: discreteWordConfidence(accuracy, errType),
-      accuracyScore: accuracy,
-      errorType: errType,
-    };
-  });
-
-  // Duration is in 100-nanosecond ticks; 1 s = 10 000 000 ticks.
-  // Prefer Azure's measurement; fall back to Deepgram WPM for short clips.
-  const durationSec = (data.Duration ?? 0) / 10_000_000;
-  const wordCount = (best.Display ?? "").trim().split(/\s+/).filter(Boolean).length;
+  // WPM: prefer Azure's measured duration, fall back to the client figure.
+  const liveWords = liveText.trim().split(/\s+/).filter(Boolean);
   const wpm =
-    durationSec > 0.5 && wordCount >= 6
-      ? Math.round((wordCount / durationSec) * 60)
-      : dgWpm;
+    az && az.durationSec > 0.5 && liveWords.length >= 6
+      ? Math.round((liveWords.length / az.durationSec) * 60)
+      : clientWpm;
 
-  const derivedScore =
-    words.length > 0
-      ? Math.round(
-          words.reduce((s: number, w: { accuracyScore: number }) => s + w.accuracyScore, 0) /
-            words.length
-        )
-      : Math.round(best.PronunciationAssessment?.PronScore ?? 0);
+  // The judge triangulates. If it fails, fall back to the Azure acoustic
+  // result (= previous behaviour), so this can only improve on the old path.
+  const verdict = await judge(liveText, langLabel, context, dg, az);
 
-  console.log(`[pronunciation] OK text="${best.Display}" score=${derivedScore} wpm=${wpm} words=${words.length}`);
-  console.log(`[pronunciation] word scores: ${words.map((w: { word: string; accuracyScore: number; errorType: string }) => `${w.word}(${w.accuracyScore},${w.errorType})`).join(" ")}`);
+  if (verdict) {
+    // Defensive alignment: one entry per live-transcript word, in order.
+    const words = liveWords.map((w, i) => {
+      const v = verdict.words[i]?.v ?? "ok";
+      const m = VERDICT_MAP[v] ?? VERDICT_MAP.ok;
+      return { word: w, confidence: m.confidence, accuracyScore: m.accuracyScore, errorType: m.errorType };
+    });
+    const score = Math.max(0, Math.min(100, Math.round(verdict.turn_score)));
+    console.log(
+      `[pronunciation] judge OK score=${score} verdicts=${verdict.words.map((w) => `${w.w}:${w.v}`).join(" ")}${verdict.summary ? ` — ${verdict.summary}` : ""}`
+    );
+    return Response.json({
+      text: liveText,
+      pronunciationScore: score,
+      accuracyScore: score,
+      wpm,
+      words,
+      source: "azure",
+    });
+  }
 
-  return Response.json({
-    text: best.Display ?? "",
-    pronunciationScore: derivedScore,
-    accuracyScore: derivedScore,
-    wpm,
-    words,
-    source: "azure",
-  });
+  // Fallback: Azure acoustic only.
+  if (az) {
+    const words = az.words.map((w) => ({
+      word: w.word,
+      confidence: discreteWordConfidence(w.accuracyScore, w.errorType),
+      accuracyScore: w.accuracyScore,
+      errorType: w.errorType,
+    }));
+    const score = words.length
+      ? Math.round(words.reduce((s, w) => s + w.accuracyScore, 0) / words.length)
+      : 0;
+    console.log(`[pronunciation] fallback (azure acoustic) score=${score}`);
+    return Response.json({
+      text: az.text,
+      pronunciationScore: score,
+      accuracyScore: score,
+      wpm,
+      words,
+      source: "azure",
+    });
+  }
+
+  console.warn("[pronunciation] no evidence available — returning null");
+  return Response.json(null);
 }
