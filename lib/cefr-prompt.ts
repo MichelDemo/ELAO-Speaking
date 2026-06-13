@@ -60,11 +60,11 @@ Fluency (naturalness of delivery):
 8-9: Natural, effortless delivery with minor disfluencies
 10: Completely natural, indistinguishable from a proficient native speaker
 
-Vocabulary & Grammar (range, precision, and grammatical accuracy — score the average):
-1-3: Very limited vocabulary, basic words only; pervasive errors, meaning frequently unclear
-4-5: Functional vocabulary with gaps, relies on approximations; frequent errors but meaning usually recoverable
-6-7: Adequate range with some imprecision; errors present but rarely block understanding — score 7 when most ideas come through clearly
-8-9: Good range with varied vocabulary and some nuanced expressions; mostly accurate with only isolated errors
+Vocabulary & Grammar (range, precision, and grammatical accuracy — score the average; grade what the speaker MEANT, not the recognizer's imperfect transcript, and lean generous — see the VOCABULARY_GRAMMAR PROTECTION RULE below):
+1-3: Very limited vocabulary, basic words only; pervasive errors that genuinely block meaning across most turns
+4-5: Functional vocabulary with gaps, relies on approximations; real errors present but meaning comes through
+6-7: Adequate range with some imprecision; errors present but rarely block understanding — score 7 when most ideas come through clearly (this is the default for a competent learner whose only "errors" are plausibly ASR artefacts)
+8-9: Good range with varied vocabulary and some nuanced expressions; mostly accurate with only isolated genuine errors
 10: Exceptional range, precise and idiomatic; near-flawless accuracy with full structural range
 
 Communication (message delivery, coherence, and comprehension of questions):
@@ -109,8 +109,15 @@ ASR transcription errors — CRITICAL:
 - The pronunciation confidence score (0-100) comes from a STRICT examiner pipeline. Interpret it on this scale: ≥ 75 = very clear speech, 60-75 = typical clear L2 speech with accent, 45-60 = noticeable pronunciation issues, < 45 = serious clarity problems. A score in the 60s is NORMAL for a competent learner — do not read it as poor speech.
 - When the pronunciation score is ≥ 60, assume the speaker's actual production was BETTER than any apparent errors in the transcript. Treat garbled or truncated words (e.g. "tiations" from "negotiations") as ASR noise, not speaker errors.
 - When the score is ≥ 60, do NOT penalise apparent vocabulary or grammar errors that could plausibly be the recognizer mishearing.
-- VOCABULARY_GRAMMAR PROTECTION RULE: If a word appears distorted, truncated, or semantically out of place in the transcript AND the overall pronunciation score is ≥ 45, treat that word as a likely ASR artefact and do NOT count it as a vocabulary or grammar error. Only penalise vocabulary_grammar for errors that appear consistently across multiple turns in clearly intelligible speech.
-- DIMENSION TIE-BREAK: pronunciation is already assessed strictly by its own pipeline — do not double-punish it here. For vocabulary_grammar and communication, when hesitating between two scores, choose the HIGHER one; penalise only patterns that repeat across several turns, never isolated slips.
+- VOCABULARY_GRAMMAR PROTECTION RULE (expanded — apply generously): The transcript is a recognizer's best guess, not a faithful record of what the speaker said. Many apparent vocabulary and grammar errors are ASR artefacts, not learner errors. Treat the following as ASR noise and do NOT penalise vocabulary_grammar for them, at ANY pronunciation score:
+    • distorted, truncated, run-together or invented words ("tiations", "wanna go", "alot");
+    • missing or wrong short function words (a/the/of/to/is/are, le/la/de/un, de/het/een) — these are dropped or swapped by the recognizer constantly;
+    • missing inflections and agreement that are inaudible or easily mis-segmented (plural -s, third-person -s, past -ed, gender/number agreement);
+    • homophones and near-homophones substituted by the recognizer (their/there, to/too, your/you're, ces/ses, a/à);
+    • missing punctuation, capitalisation, or run-on sentences — the recognizer adds these, the speaker does not "say" them.
+  Only count a vocabulary or grammar error when it is UNMISTAKABLY the speaker's: a clearly intelligible word used wrongly, or the SAME structural error repeated across multiple turns. A single isolated slip is never enough.
+- BENEFIT OF THE DOUBT: when an utterance could be read as either correct or slightly wrong depending on a recognizer guess, read it as correct. Reconstruct the most plausible well-formed sentence the speaker likely produced and grade THAT.
+- DIMENSION TIE-BREAK: pronunciation is already assessed strictly by its own pipeline — do not double-punish it here. For vocabulary_grammar especially, and for communication, when hesitating between two scores choose the HIGHER one. vocabulary_grammar should land one band higher than a strict written-text reading would suggest, because spoken transcripts understate real competence.
 Words per minute (WPM) → fluency dimension mapping (when provided):
 Fluency in speech correlates strongly with speaking rate. Use this scale to anchor the fluency dimension score:
 - WPM < 50   → fluency 1   (A0 — barely produces connected speech)
