@@ -56,20 +56,35 @@ interface RecognizerHandle {
 const SEGMENTATION_SILENCE_MS = "1500";
 
 /**
- * Punctuation-aware dispatch debounce. After a segment is recognized, wait
- * before treating the turn as finished; a `recognizing` partial cancels the
- * timer and the next segment merges into the same turn.
- *
- * Azure punctuates recognized text: a finished sentence gets terminal
- * punctuation (. ! ?), a mid-thought fragment usually doesn't. Use that:
- *   - Complete sentence  → short wait. Total silence ≈ 1500 + 900 = 2.4 s
- *     (was a flat 3.8 s — the "system takes too long to respond" complaint).
- *   - Incomplete fragment → long wait. Total ≈ 1500 + 2500 = 4.0 s, MORE
- *     mid-sentence protection than the old flat timing.
- * Worst case equals the old behaviour; the common case is 1.4 s faster.
+ * Dispatch debounce after a recognized segment; a `recognizing` partial cancels
+ * the timer and merges the next segment into the same turn. The fast path is
+ * gated hard because Azure punctuates AGGRESSIVELY — it ends a clause with a
+ * period even when the learner is only pausing to think ("I work in Brussels."
+ * … "and I like it"). Terminal punctuation alone is NOT proof the turn is over.
+ *   - Complete  → 1500 + 1400 ≈ 2.9 s  (only for substantive, clause-final text)
+ *   - Incomplete→ 1500 + 3000 ≈ 4.5 s  (fragments, short answers, continuations)
  */
-const DEBOUNCE_COMPLETE_MS = 900;
-const DEBOUNCE_INCOMPLETE_MS = 2500;
+const DEBOUNCE_COMPLETE_MS = 1400;
+const DEBOUNCE_INCOMPLETE_MS = 3000;
+
+/** Minimum word count before the fast "complete" path may be used. Below this,
+ *  a learner is very likely still assembling their answer. */
+const COMPLETE_MIN_WORDS = 8;
+
+/** Trailing words that signal the speaker is NOT finished — force the long wait
+ *  no matter what punctuation Azure attached. Conjunctions, prepositions and
+ *  fillers across the three supported languages. */
+const CONTINUATION_WORDS = new Set([
+  // English
+  "and", "but", "or", "so", "because", "that", "which", "who", "to", "of", "for",
+  "with", "the", "a", "an", "if", "when", "then", "well", "um", "uh", "like", "i",
+  // French
+  "et", "mais", "ou", "donc", "parce", "que", "qui", "de", "à", "pour", "avec",
+  "le", "la", "les", "un", "une", "si", "quand", "euh", "alors", "je",
+  // Dutch
+  "en", "maar", "of", "dus", "omdat", "dat", "die", "te", "voor", "met", "het",
+  "een", "als", "ik", "eh",
+]);
 
 export class AzureSTT {
   private recognizer: RecognizerHandle | null = null;
@@ -218,10 +233,21 @@ export class AzureSTT {
         this.pendingWords.push(...words);
         this.pendingDurationSec += (e.result.duration ?? 0) / 10_000_000;
 
-        // Punctuation-aware wait: Azure adds terminal punctuation to finished
-        // sentences. Complete sentence → dispatch fast; dangling fragment →
-        // give the learner extra time to find their words.
-        const looksComplete = /[.!?…]\s*$/.test(this.pendingText.trim());
+        // Decide how long to wait before treating the turn as finished.
+        // The fast path requires ALL of: terminal punctuation, enough words to
+        // be a real answer, and a last word that isn't a connector/filler.
+        // Anything else gets the patient wait so the learner isn't cut off
+        // mid-thought.
+        const trimmed = this.pendingText.trim();
+        const wordList = trimmed.split(/\s+/).filter(Boolean);
+        const endsTerminal = /[.!?…]\s*$/.test(trimmed);
+        const lastWord = (wordList[wordList.length - 1] ?? "")
+          .toLowerCase()
+          .replace(/[.!?…,;:]+$/, "");
+        const endsOnContinuation = CONTINUATION_WORDS.has(lastWord);
+        const looksComplete =
+          endsTerminal && wordList.length >= COMPLETE_MIN_WORDS && !endsOnContinuation;
+
         if (this.dispatchTimer) clearTimeout(this.dispatchTimer);
         this.dispatchTimer = setTimeout(() => {
           this.dispatchTimer = null;
