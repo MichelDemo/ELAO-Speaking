@@ -176,7 +176,7 @@ export function buildEvaluationUserMessage(
     "English";
 
   const shortPenalty = sttContext?.shortTurns
-    ? `\n  Incomplete turns (< 6 words): ${sttContext.shortTurns} — deduct 0.5 from fluency score per incomplete turn (hard rule).`
+    ? `\n  Short turns (< 6 words): ${sttContext.shortTurns}. NOTE: brief answers to simple warm-up questions ("I'm from Brussels", "Yes, one sister") are NORMAL and must NOT lower fluency. Only treat a short turn as a fluency problem if the speaker was clearly unable to produce more when the question called for it.`
     : "";
 
   const azureSection = sttContext

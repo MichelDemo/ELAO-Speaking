@@ -295,11 +295,18 @@ export async function POST(req: Request) {
   const liveText = referenceText || az?.text || dg?.transcript || "";
   if (!liveText.trim()) return Response.json(null);
 
-  // WPM: prefer Azure's measured duration, fall back to the client figure.
+  // WPM for the fluency anchor. Fluency must reflect HESITATION, so the
+  // denominator has to include the speaker's pauses. Azure's clip duration
+  // does (it spans the whole trimmed utterance, internal pauses and all), and
+  // its own word count matches that duration — a self-consistent, pause-aware
+  // pair. The previous calc mixed sources (live-transcript words ÷ Azure
+  // duration); the client figure (live words ÷ summed speech segments) excludes
+  // inter-segment pauses, so it measures articulation rate and hides hesitation
+  // — use it only when Azure is unavailable.
   const liveWords = liveText.trim().split(/\s+/).filter(Boolean);
   const wpm =
-    az && az.durationSec > 0.5 && liveWords.length >= 6
-      ? Math.round((liveWords.length / az.durationSec) * 60)
+    az && az.durationSec > 0.5 && az.words.length >= 6
+      ? Math.round((az.words.length / az.durationSec) * 60)
       : clientWpm;
 
   // The judge triangulates. If it fails, fall back to the Azure acoustic

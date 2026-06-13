@@ -382,11 +382,15 @@ export default function Home() {
       return vals.reduce((a, b) => a + b, 0) / vals.length;
     };
     const pronunciation = avg("pronunciationScore");
-    // Only average WPM over long turns (≥ 6 words); short answers return wpm=0
-    // and would drag the fluency figure below the real speaking rate.
+    // WPM over substantive turns (≥ 6 words; short answers return wpm=0).
+    // Word-WEIGHTED, not a plain mean: a 40-word turn should count far more
+    // than a 6-word one toward the speaking-rate figure that anchors fluency.
     const wpmTurns = scored.filter((m) => (m.pronunciation!.wpm ?? 0) > 0);
-    const wpm = wpmTurns.length > 0
-      ? wpmTurns.reduce((s, m) => s + m.pronunciation!.wpm, 0) / wpmTurns.length
+    const wordsOf = (m: Msg) =>
+      m.pronunciation!.words?.length || m.content.trim().split(/\s+/).filter(Boolean).length;
+    const wpmWordTotal = wpmTurns.reduce((s, m) => s + wordsOf(m), 0);
+    const wpm = wpmWordTotal > 0
+      ? wpmTurns.reduce((s, m) => s + m.pronunciation!.wpm * wordsOf(m), 0) / wpmWordTotal
       : 0;
     const score = Math.round(pronunciation);
     const shortTurns = scored.filter((m) => (m.pronunciation!.wpm ?? 0) === 0).length;
