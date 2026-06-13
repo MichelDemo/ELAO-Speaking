@@ -71,17 +71,29 @@ function normalize(samples: Float32Array): Float32Array {
   return out;
 }
 
+/**
+ * Single shared AudioContext for decoding. Chrome caps concurrent
+ * AudioContexts at ~6; constructing a fresh one per turn (and closing it
+ * without awaiting) overran that limit in a multi-turn session, throwing
+ * "maximum hardware contexts" — which made conversion fail on later turns and
+ * left those per-turn players with a broken source. One reused context never
+ * hits the cap. decodeAudioData ignores the context's own sample rate.
+ */
+let sharedCtx: AudioContext | null = null;
+function getDecodeContext(): AudioContext {
+  if (!sharedCtx || sharedCtx.state === "closed") {
+    sharedCtx = new AudioContext();
+  }
+  if (sharedCtx.state === "suspended") void sharedCtx.resume();
+  return sharedCtx;
+}
+
 export async function blobToWav16kMono(blob: Blob): Promise<Blob> {
   const encoded = await blob.arrayBuffer();
 
-  // Decode at the context's native rate, then resample offline.
-  const decodeCtx = new AudioContext();
-  let decoded: AudioBuffer;
-  try {
-    decoded = await decodeCtx.decodeAudioData(encoded);
-  } finally {
-    void decodeCtx.close();
-  }
+  // decodeAudioData needs a fresh copy of the buffer (it may detach the input
+  // on some engines); slice() guards against re-use issues.
+  const decoded = await getDecodeContext().decodeAudioData(encoded.slice(0));
 
   // OfflineAudioContext with 1 channel downmixes and resamples in one pass.
   // The high-pass biquad removes sub-speech rumble before the downsample.

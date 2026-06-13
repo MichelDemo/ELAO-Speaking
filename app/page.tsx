@@ -1079,6 +1079,12 @@ export default function Home() {
                   <audio
                     controls
                     src={m.audioUrl}
+                    onError={(e) => {
+                      // A bad blob source would otherwise render a broken
+                      // player; hide it and log instead of surfacing an error.
+                      console.warn(`[playback] turn ${i} audio failed to load`);
+                      (e.currentTarget as HTMLAudioElement).style.display = "none";
+                    }}
                     style={{ width: "100%", height: 28, marginTop: 6, accentColor: "#4f46e5", display: "block" }}
                   />
                 )}
