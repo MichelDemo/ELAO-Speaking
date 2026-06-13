@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "CEFR Conversation POC",
+  title: "ELAO Speaking POC",
   description: "Évaluation CEFR par conversation avec avatar 3D",
 };
 

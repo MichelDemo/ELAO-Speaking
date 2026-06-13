@@ -944,7 +944,7 @@ export default function Home() {
           flexShrink: 0,
         }}
       >
-        <h1 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>CEFR Pronunciation POC</h1>
+        <h1 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>ELAO Speaking POC</h1>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           {sessionStarted && (
             <span style={{ fontFamily: "monospace", fontSize: 13, color: elapsed >= 180 ? "#4ade80" : "#94a3b8" }}>
