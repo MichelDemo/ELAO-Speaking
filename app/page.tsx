@@ -140,11 +140,22 @@ function CefrPanel({ result, azureAvg }: { result: CefrResult; azureAvg: AzureAv
   const comm       = result.dimensions.communication;
 
   // Use Claude's score and level directly — the evaluator already accounts for all
-  // dimensions holistically. The local dimension average can diverge when pronunciation
-  // is deflated by deflateAzure(), causing the displayed level to disagree with the
-  // score (e.g. score 86 showing as C1 instead of C1+).
-  const compositeScore = result.score_percent;
-  const compositeLevel = result.level ?? scoreToLevel(compositeScore);
+  // dimensions holistically.
+  const baseScore = result.score_percent;
+
+  // Excellence bonus: when at least 2 of the 4 criteria reach 9/10, pull the
+  // overall score up by 5%. Two standout dimensions signal a stronger candidate
+  // than a flat profile at the same average — reward that. Counts 9 and 10.
+  const highCount = [pronScore, fluency, vocabGram, comm].filter(
+    (v): v is number => v !== null && v >= 9
+  ).length;
+  const compositeScore = highCount >= 2
+    ? Math.min(100, Math.round(baseScore * 1.05))
+    : baseScore;
+  // Recompute the level from the boosted score so the label and number agree.
+  const compositeLevel = compositeScore !== baseScore
+    ? scoreToLevel(compositeScore)
+    : (result.level ?? scoreToLevel(compositeScore));
 
   const dim4: [string, number | null][] = [
     ["Pronunciation", pronScore],
