@@ -19,3 +19,6 @@ tsconfig.tsbuildinfo
 
 # OS
 .DS_Store
+
+# graphify generated knowledge graph (not part of the app)
+graphify-out/
