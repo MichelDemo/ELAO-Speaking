@@ -53,7 +53,7 @@ interface RecognizerHandle {
  * punctuation-aware debounce below decides when the turn actually ends.
  * (SDK valid range: 100-5000.)
  */
-const SEGMENTATION_SILENCE_MS = "1500";
+const SEGMENTATION_SILENCE_MS = "1300";
 
 /**
  * Dispatch debounce after a recognized segment; a `recognizing` partial cancels
@@ -61,11 +61,13 @@ const SEGMENTATION_SILENCE_MS = "1500";
  * gated hard because Azure punctuates AGGRESSIVELY — it ends a clause with a
  * period even when the learner is only pausing to think ("I work in Brussels."
  * … "and I like it"). Terminal punctuation alone is NOT proof the turn is over.
- *   - Complete  → 1500 + 1400 ≈ 2.9 s  (only for substantive, clause-final text)
- *   - Incomplete→ 1500 + 3000 ≈ 4.5 s  (fragments, short answers, continuations)
+ *   - Complete  → 1300 + 1000 ≈ 2.3 s  (only for substantive, clause-final text)
+ *   - Incomplete→ 1300 + 2600 ≈ 3.9 s  (fragments, short answers, continuations)
+ * Trimmed ~0.6 s off both since the connector/min-word gating already prevents
+ * cutting learners off mid-thought — the wait no longer needs to be this long.
  */
-const DEBOUNCE_COMPLETE_MS = 1400;
-const DEBOUNCE_INCOMPLETE_MS = 3000;
+const DEBOUNCE_COMPLETE_MS = 1000;
+const DEBOUNCE_INCOMPLETE_MS = 2600;
 
 /** Minimum word count before the fast "complete" path may be used. Below this,
  *  a learner is very likely still assembling their answer. */
