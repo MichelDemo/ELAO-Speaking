@@ -21,7 +21,7 @@ const LiveAvatar = dynamic(
 
 const USE_HEYGEN = process.env.NEXT_PUBLIC_HEYGEN_ENABLED === "true";
 
-type Lang = "fr" | "en" | "nl-BE";
+type Lang = "fr" | "en" | "nl-BE" | "es" | "it" | "de";
 type Msg = {
   role: "user" | "assistant";
   content: string;
@@ -961,6 +961,9 @@ export default function Home() {
                 <option value="fr">Français</option>
                 <option value="en">English</option>
                 <option value="nl-BE">Nederlands (BE)</option>
+                <option value="es">Español</option>
+                <option value="it">Italiano</option>
+                <option value="de">Deutsch</option>
               </select>
               <button onClick={startSession} style={btn("#4f46e5")}>
                 Démarrer

@@ -38,6 +38,11 @@ const VOICE_PROFILE: Record<ConvLang, { lang: string; voice: string; style: stri
   // nl-BE-DenaNeural has no documented express-as styles — leave style empty so
   // the SSML can't be rejected; it still gets the livelier prosody below.
   "nl-BE": { lang: "nl-BE", voice: "nl-BE-DenaNeural", style: "" },
+  // Natural regional neural voices; style left empty to avoid SSML rejection on
+  // voices without documented express-as support.
+  es: { lang: "es-ES", voice: "es-ES-ElviraNeural", style: "" },
+  it: { lang: "it-IT", voice: "it-IT-ElsaNeural", style: "" },
+  de: { lang: "de-DE", voice: "de-DE-KatjaNeural", style: "" },
 };
 
 // Speaking-rate presets. The conversation opens slow so low-level listeners

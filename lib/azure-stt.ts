@@ -4,6 +4,8 @@
  * The SDK is dynamically imported so it never runs during SSR.
  */
 
+import type { ConvLang } from "@/lib/conversation-prompts";
+
 export interface WordScore {
   word: string;
   /** AccuracyScore / 100  →  0–1  (matches whisper-stt.ts interface consumed by page.tsx) */
@@ -75,7 +77,7 @@ const COMPLETE_MIN_WORDS = 8;
 
 /** Trailing words that signal the speaker is NOT finished — force the long wait
  *  no matter what punctuation Azure attached. Conjunctions, prepositions and
- *  fillers across the three supported languages. */
+ *  fillers across the supported languages. */
 const CONTINUATION_WORDS = new Set([
   // English
   "and", "but", "or", "so", "because", "that", "which", "who", "to", "of", "for",
@@ -86,12 +88,21 @@ const CONTINUATION_WORDS = new Set([
   // Dutch
   "en", "maar", "of", "dus", "omdat", "dat", "die", "te", "voor", "met", "het",
   "een", "als", "ik", "eh",
+  // Spanish
+  "y", "pero", "o", "porque", "que", "el", "los", "las", "para", "con",
+  "si", "cuando", "pues", "este", "yo", "es",
+  // Italian
+  "e", "ma", "o", "perché", "che", "di", "per", "con", "il", "lo", "gli",
+  "le", "se", "quando", "allora", "ecco", "io", "è",
+  // German
+  "und", "aber", "oder", "weil", "dass", "die", "der", "das", "zu", "für",
+  "mit", "ein", "eine", "wenn", "also", "ich", "äh", "und",
 ]);
 
 export class AzureSTT {
   private recognizer: RecognizerHandle | null = null;
   private cb: SttCallbacks;
-  private language: "fr" | "en" | "nl-BE";
+  private language: ConvLang;
 
   // Segments accumulated since the last dispatch — merged into one turn.
   private pendingText = "";
@@ -99,7 +110,7 @@ export class AzureSTT {
   private pendingDurationSec = 0;
   private dispatchTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(language: "fr" | "en" | "nl-BE", callbacks: SttCallbacks) {
+  constructor(language: ConvLang, callbacks: SttCallbacks) {
     this.language = language;
     this.cb = callbacks;
   }
@@ -151,6 +162,9 @@ export class AzureSTT {
     speechConfig.speechRecognitionLanguage =
       this.language === "fr" ? "fr-FR" :
       this.language === "nl-BE" ? "nl-BE" :
+      this.language === "es" ? "es-ES" :
+      this.language === "it" ? "it-IT" :
+      this.language === "de" ? "de-DE" :
       "en-US";
     // Tolerate learner word-finding pauses — see SEGMENTATION_SILENCE_MS doc.
     speechConfig.setProperty(

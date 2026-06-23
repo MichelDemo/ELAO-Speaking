@@ -1,0 +1,137 @@
+{
+  "/Users/michel/Downloads/cefr-poc/app/api/chat/route.ts": {
+    "mtime": 1781334978.8323798,
+    "ast_hash": "f0761fcefc198f601ed073111df66c82",
+    "semantic_hash": "f0761fcefc198f601ed073111df66c82"
+  },
+  "/Users/michel/Downloads/cefr-poc/app/api/deepgram-token/route.ts": {
+    "mtime": 1778966090.9845397,
+    "ast_hash": "70b2eb465cc5db71168181a491dffd26",
+    "semantic_hash": "70b2eb465cc5db71168181a491dffd26"
+  },
+  "/Users/michel/Downloads/cefr-poc/app/api/evaluate/route.ts": {
+    "mtime": 1779132026.2185423,
+    "ast_hash": "07e30b9b7aa073291d23440e80f0c483",
+    "semantic_hash": "07e30b9b7aa073291d23440e80f0c483"
+  },
+  "/Users/michel/Downloads/cefr-poc/app/api/liveavatar-session/route.ts": {
+    "mtime": 1778489201.1461902,
+    "ast_hash": "f25d349e4646b6d16f942bdf883facac",
+    "semantic_hash": "f25d349e4646b6d16f942bdf883facac"
+  },
+  "/Users/michel/Downloads/cefr-poc/app/api/liveavatar-task/route.ts": {
+    "mtime": 1778487328.76775,
+    "ast_hash": "bb1915b5fea9dbf3a69d16992bc3c7c8",
+    "semantic_hash": "bb1915b5fea9dbf3a69d16992bc3c7c8"
+  },
+  "/Users/michel/Downloads/cefr-poc/app/api/pronunciation/route.ts": {
+    "mtime": 1781337503.5188515,
+    "ast_hash": "423231a9fa1ecba8d466953a012d5669",
+    "semantic_hash": "423231a9fa1ecba8d466953a012d5669"
+  },
+  "/Users/michel/Downloads/cefr-poc/app/api/speech-token/route.ts": {
+    "mtime": 1779028391.4106,
+    "ast_hash": "cef613c205b0fb4f76c27cb5b57d4749",
+    "semantic_hash": "cef613c205b0fb4f76c27cb5b57d4749"
+  },
+  "/Users/michel/Downloads/cefr-poc/app/api/transcribe/route.ts": {
+    "mtime": 1779025949.6571078,
+    "ast_hash": "8839e423702d6c0d41a11703c72e1e03",
+    "semantic_hash": "8839e423702d6c0d41a11703c72e1e03"
+  },
+  "/Users/michel/Downloads/cefr-poc/app/layout.tsx": {
+    "mtime": 1781338794.7611034,
+    "ast_hash": "a2b627a55da369500459ef3129c0197a",
+    "semantic_hash": "a2b627a55da369500459ef3129c0197a"
+  },
+  "/Users/michel/Downloads/cefr-poc/app/page.tsx": {
+    "mtime": 1781338782.1999533,
+    "ast_hash": "cd8305f2d3c357219ffe7e6aaff06fde",
+    "semantic_hash": "cd8305f2d3c357219ffe7e6aaff06fde"
+  },
+  "/Users/michel/Downloads/cefr-poc/components/Avatar.tsx": {
+    "mtime": 1778960392.7531843,
+    "ast_hash": "1155719455013888df2592c4d79a7a17",
+    "semantic_hash": "1155719455013888df2592c4d79a7a17"
+  },
+  "/Users/michel/Downloads/cefr-poc/components/LiveAvatar.tsx": {
+    "mtime": 1778489231.6248038,
+    "ast_hash": "da0bc1d980a555f1e864f3c004157f41",
+    "semantic_hash": "da0bc1d980a555f1e864f3c004157f41"
+  },
+  "/Users/michel/Downloads/cefr-poc/lib/audio-player.ts": {
+    "mtime": 1781164824.4500995,
+    "ast_hash": "7e77b50598a575fe738caed478b79826",
+    "semantic_hash": "7e77b50598a575fe738caed478b79826"
+  },
+  "/Users/michel/Downloads/cefr-poc/lib/audio-wav.ts": {
+    "mtime": 1781334598.1953733,
+    "ast_hash": "59d2204ef7cb11798781bf701833d991",
+    "semantic_hash": "59d2204ef7cb11798781bf701833d991"
+  },
+  "/Users/michel/Downloads/cefr-poc/lib/azure-stt.ts": {
+    "mtime": 1781338070.622491,
+    "ast_hash": "e87a9198a6bcd03c28b6d4a611f62d8f",
+    "semantic_hash": "e87a9198a6bcd03c28b6d4a611f62d8f"
+  },
+  "/Users/michel/Downloads/cefr-poc/lib/cefr-prompt.ts": {
+    "mtime": 1781338609.962807,
+    "ast_hash": "05d88ab4451509c8cff6caecdc5f4f88",
+    "semantic_hash": "05d88ab4451509c8cff6caecdc5f4f88"
+  },
+  "/Users/michel/Downloads/cefr-poc/lib/conversation-prompts.ts": {
+    "mtime": 1781263610.2876499,
+    "ast_hash": "a7ab1276bf0a78ef3915c8bd594cc844",
+    "semantic_hash": "a7ab1276bf0a78ef3915c8bd594cc844"
+  },
+  "/Users/michel/Downloads/cefr-poc/lib/deepgram-stt.ts": {
+    "mtime": 1781167593.567868,
+    "ast_hash": "ab74b1ab0b0ceb397954b802fe8218da",
+    "semantic_hash": "ab74b1ab0b0ceb397954b802fe8218da"
+  },
+  "/Users/michel/Downloads/cefr-poc/lib/pronunciation-scoring.ts": {
+    "mtime": 1781260471.8279207,
+    "ast_hash": "27634d0e65b9b69e4921fcd2b6831015",
+    "semantic_hash": "27634d0e65b9b69e4921fcd2b6831015"
+  },
+  "/Users/michel/Downloads/cefr-poc/lib/session-recorder.ts": {
+    "mtime": 1781164842.3902867,
+    "ast_hash": "230e838cf4177e8acd210a70ac797301",
+    "semantic_hash": "230e838cf4177e8acd210a70ac797301"
+  },
+  "/Users/michel/Downloads/cefr-poc/lib/supabase.ts": {
+    "mtime": 1778964228.0628076,
+    "ast_hash": "b87396285d178837820465ed21d1e448",
+    "semantic_hash": "b87396285d178837820465ed21d1e448"
+  },
+  "/Users/michel/Downloads/cefr-poc/lib/whisper-stt.ts": {
+    "mtime": 1779027675.508738,
+    "ast_hash": "814b6e0aa3778491bcb8b4b99a152710",
+    "semantic_hash": "814b6e0aa3778491bcb8b4b99a152710"
+  },
+  "/Users/michel/Downloads/cefr-poc/next-env.d.ts": {
+    "mtime": 1778416593.2707314,
+    "ast_hash": "ba64ff7d54714a8f64db89b1003207d8",
+    "semantic_hash": "ba64ff7d54714a8f64db89b1003207d8"
+  },
+  "/Users/michel/Downloads/cefr-poc/next.config.js": {
+    "mtime": 1778966481.0591733,
+    "ast_hash": "0388a40fb86121e6ff70fd6dd3a44d68",
+    "semantic_hash": "0388a40fb86121e6ff70fd6dd3a44d68"
+  },
+  "/Users/michel/Downloads/cefr-poc/package.json": {
+    "mtime": 1779024532.6673112,
+    "ast_hash": "9e2eba793d147626cca99ac41750486e",
+    "semantic_hash": "9e2eba793d147626cca99ac41750486e"
+  },
+  "/Users/michel/Downloads/cefr-poc/tsconfig.json": {
+    "mtime": 1778309440.0,
+    "ast_hash": "39c0a36232661eeebcda5dd52dceee80",
+    "semantic_hash": "39c0a36232661eeebcda5dd52dceee80"
+  },
+  "/Users/michel/Downloads/cefr-poc/README.md": {
+    "mtime": 1778309417.0,
+    "ast_hash": "86702ccb05f9a65b83ad2b4ca233e658",
+    "semantic_hash": "86702ccb05f9a65b83ad2b4ca233e658"
+  }
+}

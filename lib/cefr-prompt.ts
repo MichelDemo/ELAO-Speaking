@@ -4,6 +4,8 @@
  * Returns a JSON object with 5 dimensions (0-10) and a CEFR level.
  */
 
+import type { ConvLang } from "@/lib/conversation-prompts";
+
 export const CEFR_SYSTEM_PROMPT = `You are an expert oral language assessor with extensive experience evaluating spoken language proficiency in interview settings.
 
 Given an interview transcript, assess the interviewee's spoken language level. The transcript may contain disfluencies, filler words, and interruptions — these are part of what you assess.
@@ -166,13 +168,16 @@ interface SttContext {
 }
 
 export function buildEvaluationUserMessage(
-  language: "fr" | "en" | "nl-BE",
+  language: ConvLang,
   userTurns: string[],
   sttContext?: SttContext,
 ): string {
   const langLabel =
     language === "fr" ? "French" :
     language === "nl-BE" ? "Dutch (Belgian)" :
+    language === "es" ? "Spanish" :
+    language === "it" ? "Italian" :
+    language === "de" ? "German" :
     "English";
 
   const shortPenalty = sttContext?.shortTurns

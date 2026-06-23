@@ -45,7 +45,13 @@ async function deepgramVerbatim(
 ): Promise<DgEvidence | null> {
   const key = process.env.DEEPGRAM_API_KEY;
   if (!key) return null;
-  const lang = langCode === "fr" ? "fr" : langCode === "nl-BE" ? "nl" : "en-US";
+  const lang =
+    langCode === "fr" ? "fr" :
+    langCode === "nl-BE" ? "nl" :
+    langCode === "es" ? "es" :
+    langCode === "it" ? "it" :
+    langCode === "de" ? "de" :
+    "en-US";
   try {
     const res = await fetch(
       `https://api.deepgram.com/v1/listen?model=nova-3&language=${lang}&punctuate=false&smart_format=false`,
@@ -97,7 +103,9 @@ async function azureAcoustic(
   key: string,
   region: string,
 ): Promise<AzEvidence | null> {
-  const langMap: Record<string, string> = { fr: "fr-FR", en: "en-US", "nl-BE": "nl-BE" };
+  const langMap: Record<string, string> = {
+    fr: "fr-FR", en: "en-US", "nl-BE": "nl-BE", es: "es-ES", it: "it-IT", de: "de-DE",
+  };
   const pronConfigB64 = Buffer.from(
     JSON.stringify({ ReferenceText: "", GradingSystem: "HundredMark", Granularity: "Phoneme", EnableMiscue: false })
   ).toString("base64");
@@ -276,6 +284,9 @@ export async function POST(req: Request) {
   const langLabel =
     langCode === "fr" ? "French" :
     langCode === "nl-BE" ? "Dutch (Belgian)" :
+    langCode === "es" ? "Spanish" :
+    langCode === "it" ? "Italian" :
+    langCode === "de" ? "German" :
     "English";
 
   console.log(`[pronunciation] blob=${audio.size}B type=${rawType} lang=${langCode} live="${referenceText.slice(0, 50)}"`);
